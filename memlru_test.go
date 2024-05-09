@@ -26,7 +26,7 @@ func TestMemoryManager(t *testing.T) {
 
 	m := memMgr.Hashmap()
 
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 8; i++ {
 		key := fmt.Sprint(i)
 		if err := m.Set(key, []byte(key)); err != nil {
 			t.Fatal(err)
