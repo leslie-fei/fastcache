@@ -1,6 +1,7 @@
 package memlru
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
@@ -32,10 +33,22 @@ func TestMemoryManager(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		v := m.Get(key)
+		v, err := m.Get(key)
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		if string(v) != key {
 			panic("get value not equal")
+		}
+
+		if err = m.Del(key); err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = m.Get(key)
+		if !errors.Is(err, ErrNotFound) {
+			t.Fatal("expect ErrNotFound")
 		}
 	}
 }

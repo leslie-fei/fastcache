@@ -6,6 +6,8 @@ import (
 	"unsafe"
 )
 
+var ErrNotFound = errors.New("key not found")
+
 // HashMap fixed size HashMap
 type HashMap struct {
 	memMgr *MemoryManager
@@ -13,25 +15,17 @@ type HashMap struct {
 	array  [1]list
 }
 
-func (m *HashMap) Get(key string) []byte {
-	hash := xxHashString(key)
-	index := uint64(hash) % uint64(len(m.array))
-	item := m.array[index]
-	els := item.Elements(m.memMgr.Offset(item.Offset))
-	for i := 0; i < len(els); i++ {
-		el := els[i]
-		if el.ValLen > 0 && el.ToKey() == key {
-			node := (*LinkedNode16)(m.memMgr.Offset(el.ValOffset))
-			return node.Data[:el.ValLen]
-		}
+func (m *HashMap) Get(key string) ([]byte, error) {
+	el, err := m.get(key)
+	if err != nil {
+		return nil, err
 	}
-	return nil
+	node := (*LinkedNode16)(m.memMgr.Offset(el.ValOffset))
+	return node.Data[:el.ValLen], nil
 }
 
 func (m *HashMap) Set(key string, value []byte) error {
-	hash := xxHashString(key)
-	index := uint64(hash) % uint64(len(m.array))
-	item := &m.array[index]
+	item := m.item(key)
 	if item.Len == 0 {
 		item.grow(m.memMgr)
 	}
@@ -40,7 +34,7 @@ func (m *HashMap) Set(key string, value []byte) error {
 	var free *listElement
 	for i := 0; i < len(elements); i++ {
 		el := &elements[i]
-		if el.ValLen > 0 && el.ToKey() == key {
+		if !el.Deleted() && el.ToKey() == key {
 			// found
 			el.ValLen = int32(len(value))
 			node := (*LinkedNode16)(m.memMgr.Offset(el.ValOffset))
@@ -50,7 +44,7 @@ func (m *HashMap) Set(key string, value []byte) error {
 			return nil
 		}
 
-		if free == nil && el.ValLen == 0 {
+		if free == nil && el.Deleted() {
 			free = el
 		}
 	}
@@ -65,7 +59,7 @@ func (m *HashMap) Set(key string, value []byte) error {
 	// 设置key值
 	ss := (*reflect.StringHeader)(unsafe.Pointer(&key))
 	memmove(unsafe.Pointer(&free.Key), unsafe.Pointer(ss.Data), uintptr(ss.Len))
-	free.KeyLen = int32(ss.Len)
+	free.KeyLen = uint16(ss.Len)
 	// 设置value值
 	free.ValLen = int32(len(value))
 	// 申请一个数据块
@@ -80,6 +74,37 @@ func (m *HashMap) Set(key string, value []byte) error {
 	free.ValOffset = node.Offset
 
 	return nil
+}
+
+func (m *HashMap) Del(key string) error {
+	el, err := m.get(key)
+	if err != nil {
+		return err
+	}
+	// 把val归还到free block list中
+	node := (*LinkedNode16)(m.memMgr.Offset(el.ValOffset))
+	m.memMgr.free16(node)
+	el.MarkDeleted()
+	return nil
+}
+
+func (m *HashMap) item(key string) *list {
+	hash := xxHashString(key)
+	index := uint64(hash) % uint64(len(m.array))
+	item := &m.array[index]
+	return item
+}
+
+func (m *HashMap) get(key string) (*listElement, error) {
+	item := m.item(key)
+	els := item.Elements(m.memMgr.Offset(item.Offset))
+	for i := 0; i < len(els); i++ {
+		el := &els[i]
+		if !el.Deleted() && el.ToKey() == key {
+			return el, nil
+		}
+	}
+	return nil, ErrNotFound
 }
 
 type list struct {
@@ -97,6 +122,10 @@ func (l *list) grow(memMgr *MemoryManager) {
 	_, headerOffset := memMgr.alloc(uint64(dataSize))
 	l.Offset = headerOffset
 	l.Len = size
+	els := l.Elements(memMgr.Offset(headerOffset))
+	for i := 0; i < len(els); i++ {
+		els[i].Reset()
+	}
 }
 
 func (l *list) Elements(ptr unsafe.Pointer) []listElement {
@@ -109,34 +138,25 @@ func (l *list) Elements(ptr unsafe.Pointer) []listElement {
 }
 
 type listElement struct {
-	KeyLen    int32
+	KeyLen    uint16
 	Key       [32]byte
 	ValLen    int32
-	ValOffset uint64
+	ValOffset uint64 // basePtr offset
+}
+
+func (l *listElement) Reset() {
+	l.KeyLen = 0
+	l.ValLen = -1
+}
+
+func (l *listElement) Deleted() bool {
+	return l.ValLen == -1
+}
+
+func (l *listElement) MarkDeleted() {
+	l.ValLen = -1
 }
 
 func (l *listElement) ToKey() string {
 	return string(l.Key[:l.KeyLen])
 }
-
-/*type String struct {
-	Offset uint64
-	Len    uint32
-}
-
-func (str String) String(base unsafe.Pointer) string {
-	s := ""
-	ss := (*reflect.StringHeader)(unsafe.Pointer(&s))
-	ss.Data = uintptr(base) + uintptr(str.Offset)
-	ss.Len = int(str.Len)
-	return s
-}
-
-func ToKey(s string, offset uint64) String {
-	var str = String{
-		Offset: offset,
-		Len:    uint32(len(s)),
-	}
-	return str
-}
-*/

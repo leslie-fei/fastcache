@@ -189,7 +189,14 @@ func (m *MemoryManager) alloc16() (*LinkedNode16, error) {
 }
 
 func (m *MemoryManager) free16(node *LinkedNode16) {
-	// TODO free
+	freeList := m.Block16FreeList()
+	if freeList.Len == 0 {
+		freeList.Head = node.Offset
+	} else {
+		node.Next = freeList.Head
+		freeList.Head = node.Offset
+	}
+	freeList.Len++
 }
 
 func (m *MemoryManager) FreeMemory() uint64 {
