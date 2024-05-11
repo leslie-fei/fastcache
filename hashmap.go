@@ -16,7 +16,7 @@ var (
 type HashMap struct {
 	memMgr *MemoryManager
 	Len    uint32
-	array  [1]list
+	array  [1024]list
 }
 
 func (m *HashMap) Get(key string) ([]byte, error) {
