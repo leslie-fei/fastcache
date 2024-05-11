@@ -4,16 +4,15 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"syscall"
 	"unsafe"
-
-	"github.com/edsrzf/mmap-go"
 )
 
 type Memory struct {
 	filepath string
 	bytes    uint64
 	file     *os.File
-	mmap     mmap.MMap
+	mmap     []byte
 	basep    unsafe.Pointer
 }
 
@@ -25,28 +24,25 @@ func (m *Memory) Attach() (err error) {
 	if nil == m.file {
 		_, err = os.Stat(m.filepath)
 		if err != nil {
-			if os.IsNotExist(err) {
-				if m.file, err = os.Create(m.filepath); err != nil {
-					return err
-				}
+			if !os.IsNotExist(err) {
+				return err
 			}
-			// other error
-			return err
+			if m.file, err = os.Create(m.filepath); err != nil {
+				return err
+			}
+			if err = m.file.Truncate(int64(m.bytes)); nil != err {
+				m.file = nil
+				return err
+			}
 		} else {
-			// file exists
-			if m.file, err = os.OpenFile(m.filepath, os.O_RDWR, 0666); nil != err {
+			if m.file, err = os.OpenFile(m.filepath, os.O_RDWR, 0666); err != nil {
+				_ = m.file.Close()
 				return err
 			}
 		}
 
-		if err = m.file.Truncate(int64(m.bytes)); nil != err {
-			m.file.Close()
-			m.file = nil
-			return err
-		}
-
-		if m.mmap, err = mmap.Map(m.file, mmap.RDWR, 0); nil != err {
-			m.file.Close()
+		m.mmap, err = syscall.Mmap(int(m.file.Fd()), 0, int(m.bytes), syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
+		if err != nil {
 			m.file = nil
 			return err
 		}
@@ -59,7 +55,7 @@ func (m *Memory) Attach() (err error) {
 
 func (m *Memory) Detach() error {
 	if nil != m.mmap {
-		if err := m.mmap.Unmap(); nil != err {
+		if err := syscall.Munmap(m.mmap); nil != err {
 			return err
 		}
 		m.mmap = nil
