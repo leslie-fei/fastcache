@@ -16,7 +16,6 @@ type LinkedNode struct {
 func (ln *LinkedNode) Reset() {
 	ln.Next = 0
 	ln.Len = 0
-	ln.DataOffset = 0
 }
 
 func (ln *LinkedNode) Data(base uintptr) []byte {

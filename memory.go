@@ -32,9 +32,9 @@ var (
 )
 
 const (
-	magic          uint64 = 10031990
-	memoryHeadSize        = 10 * KB
-	PageSize              = 16 * KB
+	magic             uint64 = 10031990
+	fixedMetadataSize        = 10 * KB
+	PageSize                 = 16 * KB
 )
 
 var (
@@ -60,36 +60,28 @@ type Memory interface {
 	Travel(skipOffset uint64, fn func(ptr unsafe.Pointer, size uint64) uint64)
 }
 
-type StatInfo struct {
+type Metadata struct {
 	Magic             uint64
 	TotalSize         uint64
-	Allocated         uint64
+	Used              uint64
 	HashMapOffset     uint64
 	Block16FreeOffset uint64
 	Block1KFreeOffset uint64
 	Block1MFreeOffset uint64
 }
 
-type BlockFreeList struct {
-	Len  uint32
-	Head uint64
-}
-
-func (bl *BlockFreeList) HeadNode(mem *MemoryManager) *LinkedNode {
-	if bl.Len == 0 {
-		return nil
-	}
-	return (*LinkedNode)(mem.Offset(bl.Head))
-}
-
-func NewMemoryManager(mem Memory) *MemoryManager {
-	return &MemoryManager{
+func NewMemoryManager(mem Memory) (*MemoryManager, error) {
+	memMgr := &MemoryManager{
 		mem: mem,
 	}
+	if err := memMgr.init(); err != nil {
+		return nil, err
+	}
+	return memMgr, nil
 }
 
 type MemoryManager struct {
-	statInfo        *StatInfo
+	metadata        *Metadata
 	mem             Memory
 	hashMap         *HashMap
 	block16FreeList *BlockFreeList
@@ -97,61 +89,65 @@ type MemoryManager struct {
 	block1MFreeList *BlockFreeList
 }
 
-func (m *MemoryManager) Init() error {
-	m.statInfo = (*StatInfo)(m.mem.Ptr())
-	if m.statInfo.Magic == 0 {
-		m.statInfo.Allocated = uint64(memoryHeadSize)
-		m.statInfo.Magic = magic
-		m.statInfo.TotalSize = m.mem.Size()
+func (m *MemoryManager) FreeMemory() uint64 {
+	return m.metadata.TotalSize - m.metadata.Used
+}
+
+func (m *MemoryManager) Get(key string) ([]byte, error) {
+	return m.hashMap.Get(key)
+}
+
+func (m *MemoryManager) Set(key string, value []byte) error {
+	return m.hashMap.Set(key, value)
+}
+
+func (m *MemoryManager) Del(key string) error {
+	return m.hashMap.Del(key)
+}
+
+func (m *MemoryManager) init() error {
+	m.metadata = (*Metadata)(m.mem.Ptr())
+	if m.metadata.Magic == 0 {
+		m.metadata.Used = uint64(fixedMetadataSize)
+		m.metadata.Magic = magic
+		m.metadata.TotalSize = m.mem.Size()
 		// init fixed size hashmap
 		_, hashOffset := m.alloc(uint64(sizeOfHashmap))
-		m.statInfo.HashMapOffset = hashOffset
+		m.metadata.HashMapOffset = hashOffset
 		_, block16Offset := m.alloc(uint64(sizeOfBlockFreeList))
-		m.statInfo.Block16FreeOffset = block16Offset
+		m.metadata.Block16FreeOffset = block16Offset
 		_, block1KOffset := m.alloc(uint64(sizeOfBlockFreeList))
-		m.statInfo.Block1KFreeOffset = block1KOffset
+		m.metadata.Block1KFreeOffset = block1KOffset
 		_, block1MOffset := m.alloc(uint64(sizeOfBlockFreeList))
-		m.statInfo.Block1MFreeOffset = block1MOffset
+		m.metadata.Block1MFreeOffset = block1MOffset
 	}
 
-	if m.statInfo.Magic != magic {
+	if m.metadata.Magic != magic {
 		return errors.New("invalid mem magic")
 	}
 
-	m.hashMap = (*HashMap)(m.Offset(m.statInfo.HashMapOffset))
+	m.hashMap = (*HashMap)(m.offset(m.metadata.HashMapOffset))
 	m.hashMap.memMgr = m
-	m.block16FreeList = (*BlockFreeList)(m.mem.PtrOffset(m.statInfo.Block16FreeOffset))
-	m.block1KFreeList = (*BlockFreeList)(m.mem.PtrOffset(m.statInfo.Block1KFreeOffset))
-	m.block1MFreeList = (*BlockFreeList)(m.mem.PtrOffset(m.statInfo.Block1MFreeOffset))
+	m.block16FreeList = (*BlockFreeList)(m.offset(m.metadata.Block16FreeOffset))
+	m.block1KFreeList = (*BlockFreeList)(m.offset(m.metadata.Block1KFreeOffset))
+	m.block1MFreeList = (*BlockFreeList)(m.offset(m.metadata.Block1MFreeOffset))
 
 	return nil
 }
 
-func (m *MemoryManager) Offset(offset uint64) unsafe.Pointer {
+func (m *MemoryManager) offset(offset uint64) unsafe.Pointer {
 	return m.mem.PtrOffset(offset)
 }
 
-func (m *MemoryManager) Ptr() unsafe.Pointer {
-	return m.mem.PtrOffset(m.statInfo.Allocated)
+func (m *MemoryManager) ptr() unsafe.Pointer {
+	return m.mem.PtrOffset(m.metadata.Used)
 }
 
-func (m *MemoryManager) Memory() Memory {
-	return m.mem
-}
-
-func (m *MemoryManager) BasePtr() uintptr {
+func (m *MemoryManager) basePtr() uintptr {
 	return uintptr(m.mem.Ptr())
 }
 
-func (m *MemoryManager) Hashmap() *HashMap {
-	return m.hashMap
-}
-
-func (m *MemoryManager) FreeMemory() uint64 {
-	return m.statInfo.TotalSize - m.statInfo.Allocated
-}
-
-func (m *MemoryManager) ToLinkedNode(offset uint64) *LinkedNode {
+func (m *MemoryManager) toLinkedNode(offset uint64) *LinkedNode {
 	if offset == 0 {
 		return nil
 	}
@@ -179,9 +175,9 @@ func (m *MemoryManager) selectFreeByType(typ FreeDataType) *BlockFreeList {
 
 // alloc memory return ptr and offset of base ptr
 func (m *MemoryManager) alloc(size uint64) (ptr unsafe.Pointer, offset uint64) {
-	ptr = m.Ptr()
-	offset = m.statInfo.Allocated
-	m.statInfo.Allocated += size
+	ptr = m.ptr()
+	offset = m.metadata.Used
+	m.metadata.Used += size
 	return
 }
 
@@ -206,10 +202,10 @@ func (m *MemoryManager) allocMany(num int, dataSize uint64) ([]*LinkedNode, erro
 		_, offset := m.alloc(PageSize)
 		// 设置第一个链表节点的offset
 		size := PageSize / int(nodeSize)
-		head := freeList.HeadNode(m)
+		head := freeList.First(m)
 		// 头插法
 		for i := 0; i < size; i++ {
-			node := (*LinkedNode)(m.Offset(offset))
+			node := (*LinkedNode)(m.offset(offset))
 			node.Reset()
 			// 填写数据的指针位置
 			node.DataOffset = offset + uint64(sizeOfLinkedNode)
@@ -219,21 +215,21 @@ func (m *MemoryManager) allocMany(num int, dataSize uint64) ([]*LinkedNode, erro
 			} else {
 				// 头插, 把当前的head, 前面插入node节点
 				next := head
-				node.Next = next.Offset(m.BasePtr())
+				node.Next = next.Offset(m.basePtr())
 				head = node
 			}
 			offset += uint64(nodeSize)
 		}
 		freeList.Len += uint32(size)
 		if head != nil {
-			freeList.Head = head.Offset(m.BasePtr())
+			freeList.Head = head.Offset(m.basePtr())
 		}
 	}
 
 	nodes := make([]*LinkedNode, 0, num)
 	for i := 0; i < num; i++ {
 		// 把第一个链表节点取出
-		node := (*LinkedNode)(m.Offset(freeList.Head))
+		node := (*LinkedNode)(m.offset(freeList.Head))
 		freeList.Head = node.Next
 		freeList.Len--
 		// 断开与这个链表的关联, 变成一个独立的node
@@ -248,10 +244,10 @@ func (m *MemoryManager) free(node *LinkedNode) {
 	node.Reset()
 	freeList := m.selectFreeByType(FreeDataType(node.FreeType))
 	if freeList.Len == 0 {
-		freeList.Head = node.Offset(m.BasePtr())
+		freeList.Head = node.Offset(m.basePtr())
 	} else {
 		node.Next = freeList.Head
-		freeList.Head = node.Offset(m.BasePtr())
+		freeList.Head = node.Offset(m.basePtr())
 	}
 	freeList.Len++
 }

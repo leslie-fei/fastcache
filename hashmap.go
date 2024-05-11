@@ -24,8 +24,8 @@ func (m *HashMap) Get(key string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	node := (*LinkedNode)(m.memMgr.Offset(el.ValOffset))
-	return node.Data(m.memMgr.BasePtr()), nil
+	node := (*LinkedNode)(m.memMgr.offset(el.ValOffset))
+	return node.Data(m.memMgr.basePtr()), nil
 }
 
 func (m *HashMap) Set(key string, value []byte) error {
@@ -36,7 +36,7 @@ func (m *HashMap) Set(key string, value []byte) error {
 	item.Range(m.memMgr, func(el *listElement) bool {
 		if el.ToKey() == key {
 			// found
-			valNode := m.memMgr.ToLinkedNode(el.ValOffset)
+			valNode := m.memMgr.toLinkedNode(el.ValOffset)
 			// 判断是否超过原来的节点最大可以容纳的size
 			if len(value) > DataSizeMap[FreeDataType(valNode.FreeType)] {
 				// 如果超过需要重新分配一个node来装数据
@@ -50,9 +50,9 @@ func (m *HashMap) Set(key string, value []byte) error {
 				m.memMgr.free(oldNode)
 				valNode = node
 				// 重新绑定element的val data node
-				el.ValOffset = valNode.Offset(m.memMgr.BasePtr())
+				el.ValOffset = valNode.Offset(m.memMgr.basePtr())
 			}
-			valNode.UpdateData(m.memMgr.BasePtr(), value)
+			valNode.UpdateData(m.memMgr.basePtr(), value)
 			found = true
 			// break foreach
 			return false
@@ -74,7 +74,7 @@ func (m *HashMap) Set(key string, value []byte) error {
 	if err != nil {
 		return err
 	}
-	listEl := (*listElement)(unsafe.Pointer(listElNode.DataPtr(m.memMgr.BasePtr())))
+	listEl := (*listElement)(unsafe.Pointer(listElNode.DataPtr(m.memMgr.basePtr())))
 
 	// set key
 	ss := (*reflect.StringHeader)(unsafe.Pointer(&key))
@@ -87,14 +87,14 @@ func (m *HashMap) Set(key string, value []byte) error {
 	if err != nil {
 		return err
 	}
-	valNode.UpdateData(m.memMgr.BasePtr(), value)
+	valNode.UpdateData(m.memMgr.basePtr(), value)
 	// 然后把这个链表的指针offset写入到element中
-	listEl.ValOffset = valNode.Offset(m.memMgr.BasePtr())
+	listEl.ValOffset = valNode.Offset(m.memMgr.basePtr())
 
-	// 更新item链表, 头插法
+	// 更新list链表, 头插法
 	next := item.Offset
 	// 把item的头指针指向当前的listElNode
-	item.Offset = listElNode.Offset(m.memMgr.BasePtr())
+	item.Offset = listElNode.Offset(m.memMgr.basePtr())
 	// 更新next
 	listElNode.Next = next
 	// hashed array len + 1
@@ -105,7 +105,7 @@ func (m *HashMap) Set(key string, value []byte) error {
 	return nil
 }
 
-func (m *HashMap) Del(key string) {
+func (m *HashMap) Del(key string) error {
 	item := m.item(key)
 	memMgr := m.memMgr
 	var findNode *LinkedNode
@@ -113,8 +113,9 @@ func (m *HashMap) Del(key string) {
 	offset := item.Offset
 	var prev uint64
 	for i := 0; i < int(item.Len); i++ {
-		elNode := memMgr.ToLinkedNode(offset)
-		el := (*listElement)(memMgr.Offset(elNode.DataOffset))
+		elNode := m.memMgr.toLinkedNode(offset)
+		elPtr := m.memMgr.offset(elNode.DataOffset)
+		el := (*listElement)(elPtr)
 		if el.ToKey() == key {
 			findNode = elNode
 			break
@@ -125,19 +126,24 @@ func (m *HashMap) Del(key string) {
 
 	// not found
 	if findNode == nil {
-		return
+		return ErrNotFound
 	}
 
 	if prev == 0 {
 		// 就说明这个是头节点, 需要更新list的头节点指向
 		item.Offset = findNode.Next
 	} else {
-		prevNode := memMgr.ToLinkedNode(prev)
+		prevNode := memMgr.toLinkedNode(prev)
 		prevNode.Next = findNode.Next
 	}
 	memMgr.free(findNode)
 	item.Len--
 	m.Len--
+	// list中没有任何element, 就把head offset = 0
+	if item.Len == 0 {
+		item.Offset = 0
+	}
+	return nil
 }
 
 func (m *HashMap) item(key string) *list {
@@ -165,8 +171,8 @@ func (l *list) Range(memMgr *MemoryManager, f func(el *listElement) bool) {
 	if l.Len == 0 {
 		return
 	}
-	for node := memMgr.ToLinkedNode(l.Offset); node != nil; node = memMgr.ToLinkedNode(node.Next) {
-		el := (*listElement)(memMgr.Offset(node.DataOffset))
+	for node := memMgr.toLinkedNode(l.Offset); node != nil; node = memMgr.toLinkedNode(node.Next) {
+		el := (*listElement)(memMgr.offset(node.DataOffset))
 		if !f(el) {
 			return
 		}
@@ -198,8 +204,4 @@ type listElement struct {
 
 func (l *listElement) ToKey() string {
 	return string(l.Key[:l.KeyLen])
-}
-
-func (l *listElement) FreeTo(memMgr *MemoryManager) {
-
 }

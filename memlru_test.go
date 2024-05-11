@@ -5,11 +5,12 @@ import (
 	"fmt"
 	"testing"
 
-	"memlru/shm"
+	"memlru/mmap"
 )
 
 func TestMemoryManager(t *testing.T) {
-	mem := shm.NewMemory("/shm/test", 128*MB, true)
+	//mem := shm.NewMemory("/shm/testMemoryManager", 128*MB, true)
+	mem := mmap.NewMemory("/tmp/testSharedMem", 128*MB)
 	if err := mem.Attach(); err != nil {
 		t.Fatal(err)
 	}
@@ -20,20 +21,23 @@ func TestMemoryManager(t *testing.T) {
 		}
 	}()
 
-	memMgr := NewMemoryManager(mem)
-	if err := memMgr.Init(); err != nil {
+	memMgr, err := NewMemoryManager(mem)
+	if err != nil {
 		t.Fatal(err)
 	}
 
-	m := memMgr.Hashmap()
-
 	for i := 0; i < 1024; i++ {
 		key := fmt.Sprint(i)
-		if err := m.Set(key, []byte(key)); err != nil {
-			t.Fatal(err)
+		value := []byte(key)
+		if err := memMgr.init(); err != nil {
+			t.Fatal("index: ", i, "err: ", err)
+		}
+		//key := fmt.Sprint(i)
+		if err := memMgr.Set(key, value); err != nil {
+			t.Fatal("index: ", i, "err: ", err)
 		}
 
-		v, err := m.Get(key)
+		v, err := memMgr.Get(key)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -42,41 +46,13 @@ func TestMemoryManager(t *testing.T) {
 			panic("get value not equal")
 		}
 
-		m.Del(key)
-		_, err = m.Get(key)
+		if err := memMgr.Del(key); err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = memMgr.Get(key)
 		if !errors.Is(err, ErrNotFound) {
 			t.Fatal("expect ErrNotFound")
 		}
-	}
-}
-
-func TestTemp(t *testing.T) {
-	mem := shm.NewMemory("/shm/test", MB, true)
-	if err := mem.Attach(); err != nil {
-		t.Fatal(err)
-	}
-	memMgr := NewMemoryManager(mem)
-	if err := memMgr.Init(); err != nil {
-		t.Fatal(err)
-	}
-
-	m := memMgr.Hashmap()
-
-	key := "k1"
-	value := []byte("v2")
-
-	_, _ = key, value
-
-	if err := m.Set(key, value); err != nil {
-		t.Fatal(err)
-	}
-
-	v, err := m.Get(key)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if string(v) != string(value) {
-		t.Fatal("get value not equal")
 	}
 }
