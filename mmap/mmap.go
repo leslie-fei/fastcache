@@ -2,7 +2,6 @@ package mmap
 
 import (
 	"fmt"
-	"os"
 	"reflect"
 	"syscall"
 	"unsafe"
@@ -11,7 +10,7 @@ import (
 type Memory struct {
 	filepath string
 	bytes    uint64
-	file     *os.File
+	fd       int
 	mmap     []byte
 	basep    unsafe.Pointer
 }
@@ -21,53 +20,42 @@ func NewMemory(filepath string, bytes uint64) *Memory {
 }
 
 func (m *Memory) Attach() (err error) {
-	if nil == m.file {
-		_, err = os.Stat(m.filepath)
-		if err != nil {
-			if !os.IsNotExist(err) {
-				return err
-			}
-			if m.file, err = os.Create(m.filepath); err != nil {
-				return err
-			}
-			if err = m.file.Truncate(int64(m.bytes)); nil != err {
-				m.file = nil
-				return err
-			}
-		} else {
-			if m.file, err = os.OpenFile(m.filepath, os.O_RDWR, 0666); err != nil {
-				_ = m.file.Close()
-				return err
-			}
-		}
-
-		m.mmap, err = syscall.Mmap(int(m.file.Fd()), 0, int(m.bytes), syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
-		if err != nil {
-			m.file = nil
-			return err
-		}
-
-		sh := (*reflect.SliceHeader)(unsafe.Pointer(&m.mmap))
-		m.basep = unsafe.Pointer(sh.Data)
+	m.fd, err = syscall.Open(m.filepath, syscall.O_RDWR|syscall.O_CREAT|syscall.O_TRUNC, 0666)
+	if err != nil {
+		return err
 	}
+
+	if err = syscall.Ftruncate(m.fd, int64(m.bytes)); err != nil {
+		_ = syscall.Close(m.fd)
+		return err
+	}
+
+	m.mmap, err = syscall.Mmap(m.fd, 0, int(m.bytes), syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
+	if err != nil {
+		_ = syscall.Close(m.fd)
+		return err
+	}
+
+	sh := (*reflect.SliceHeader)(unsafe.Pointer(&m.mmap))
+	m.basep = unsafe.Pointer(sh.Data)
+
 	return
 }
 
 func (m *Memory) Detach() error {
-	if nil != m.mmap {
-		if err := syscall.Munmap(m.mmap); nil != err {
+	if m.mmap != nil {
+		if err := syscall.Munmap(m.mmap); err != nil {
 			return err
 		}
-		m.mmap = nil
+	}
+
+	if m.fd > 0 {
+		if err := syscall.Close(m.fd); err != nil {
+			return err
+		}
 		m.basep = unsafe.Pointer(nil)
 	}
 
-	if nil != m.file {
-		if err := m.file.Close(); nil != err {
-			return err
-		}
-		m.file = nil
-	}
 	return nil
 }
 
