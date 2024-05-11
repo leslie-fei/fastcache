@@ -69,6 +69,7 @@ func main() {
 
 			if errors.Is(err, memlru.ErrNotFound) {
 				fmt.Println("key not found")
+				continue
 			}
 
 			fmt.Printf("key: %s value: %s\n", parts[1], result)

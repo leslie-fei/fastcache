@@ -49,6 +49,8 @@ func (m *HashMap) Set(key string, value []byte) error {
 				// 释放老节点到freeList
 				m.memMgr.free(oldNode)
 				valNode = node
+				// 重新绑定element的val data node
+				el.ValOffset = valNode.Offset(m.memMgr.BasePtr())
 			}
 			valNode.UpdateData(m.memMgr.BasePtr(), value)
 			found = true
