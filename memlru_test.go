@@ -3,7 +3,11 @@ package memlru
 import (
 	"errors"
 	"fmt"
+	"os"
+	"strconv"
+	"syscall"
 	"testing"
+	"time"
 
 	"memlru/mmap"
 )
@@ -55,4 +59,81 @@ func TestMemoryManager(t *testing.T) {
 			t.Fatal("expect ErrNotFound")
 		}
 	}
+}
+
+func TestMMapMemory(t *testing.T) {
+	filepath := "/tmp/testfile"
+
+	var locker, err = NewFileLock("/tmp/testfile.lock")
+	if err != nil {
+		panic(err)
+	}
+
+	go func() {
+		locker.Lock()
+		mem := mmap.NewMemory(filepath, 128*MB)
+		if err := mem.Attach(); err != nil {
+			panic(err)
+		}
+		defer func() {
+			if err := mem.Detach(); err != nil {
+				panic(err)
+			}
+		}()
+		memMgr, err := NewMemoryManager(mem)
+		if err != nil {
+			panic(err)
+		}
+		locker.Unlock()
+
+		for {
+			locker.Lock()
+			v, err := memMgr.Get("k1")
+			value := 0
+			if !errors.Is(err, ErrNotFound) {
+				value, _ = strconv.Atoi(string(v))
+			}
+			value++
+			fmt.Printf("g1 v: %s err: %v\n", v, err)
+			if err := memMgr.Set("k1", []byte(fmt.Sprint(value))); err != nil {
+				panic(err)
+			}
+			locker.Unlock()
+			time.Sleep(time.Second)
+		}
+	}()
+
+	select {}
+}
+
+type FileLock struct {
+	file *os.File
+}
+
+func NewFileLock(filename string) (*FileLock, error) {
+	file, err := os.OpenFile(filename, os.O_RDWR|os.O_CREATE, 0666)
+	if err != nil {
+		return nil, err
+	}
+	return &FileLock{file: file}, nil
+}
+
+func (fl *FileLock) Lock() error {
+	err := syscall.Flock(int(fl.file.Fd()), syscall.LOCK_EX)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (fl *FileLock) Unlock() error {
+	err := syscall.Flock(int(fl.file.Fd()), syscall.LOCK_UN)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (fl *FileLock) Close() error {
+	return fl.file.Close()
 }

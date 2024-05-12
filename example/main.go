@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"memlru"
-	"memlru/shm"
+	"memlru/mmap"
 )
 
 func main() {
@@ -23,8 +23,8 @@ func main() {
 
 	size = size * memlru.MB
 
-	mem := shm.NewMemory(key, uint64(size), true)
-	//mem := mmap.NewMemory(key, uint64(size))
+	//mem := shm.NewMemory(key, uint64(size), true)
+	mem := mmap.NewMemory(key, uint64(size))
 	if err := mem.Attach(); err != nil {
 		panic(err)
 	}

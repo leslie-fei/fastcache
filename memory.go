@@ -94,15 +94,15 @@ func (m *MemoryManager) FreeMemory() uint64 {
 }
 
 func (m *MemoryManager) Get(key string) ([]byte, error) {
-	return m.hashMap.Get(key)
+	return m.hashMap.Get(m, key)
 }
 
 func (m *MemoryManager) Set(key string, value []byte) error {
-	return m.hashMap.Set(key, value)
+	return m.hashMap.Set(m, key, value)
 }
 
 func (m *MemoryManager) Del(key string) error {
-	return m.hashMap.Del(key)
+	return m.hashMap.Del(m, key)
 }
 
 func (m *MemoryManager) init() error {
@@ -127,7 +127,6 @@ func (m *MemoryManager) init() error {
 	}
 
 	m.hashMap = (*HashMap)(m.offset(m.metadata.HashMapOffset))
-	m.hashMap.memMgr = m
 	m.block16FreeList = (*BlockFreeList)(m.offset(m.metadata.Block16FreeOffset))
 	m.block1KFreeList = (*BlockFreeList)(m.offset(m.metadata.Block1KFreeOffset))
 	m.block1MFreeList = (*BlockFreeList)(m.offset(m.metadata.Block1MFreeOffset))
