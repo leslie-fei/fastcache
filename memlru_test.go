@@ -46,7 +46,7 @@ func TestMemoryManager(t *testing.T) {
 			t.Fatal("index: ", i, "err: ", err)
 		}
 
-		/*v, err := memMgr.Get(key)
+		v, err := memMgr.Get(key)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -54,7 +54,7 @@ func TestMemoryManager(t *testing.T) {
 		if string(v) != string(value) {
 			panic("get value not equal")
 		}
-		*/
+
 		if err := memMgr.Del(key); err != nil {
 			t.Fatal(err)
 		}

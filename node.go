@@ -42,3 +42,10 @@ func (ln *LinkedNode) UpdateData(base uintptr, value []byte) {
 	memmove(unsafe.Pointer(ptr), unsafe.Pointer(bh.Data), uintptr(len(value)))
 	ln.Len = uint32(len(value))
 }
+
+func (ln *LinkedNode) UpdateString(base uintptr, value string) {
+	ptr := ln.DataPtr(base)
+	ss := (*reflect.StringHeader)(unsafe.Pointer(&value))
+	memmove(unsafe.Pointer(ptr), unsafe.Pointer(ss.Data), uintptr(ss.Len))
+	ln.Len = uint32(ss.Len)
+}
