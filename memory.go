@@ -20,13 +20,16 @@ var (
 )
 
 const (
-	magic             uint64 = 9259259527
-	PageSize                 = 16 * KB
-	fixedMetadataSize        = 10 * KB
+	magic                 uint64 = 9259259527
+	PageSize                     = 16 * KB
+	perHashmapSlotLength         = 100
+	perHashmapElementSize        = 128
 )
 
 var (
+	sizeOfMetadata               = unsafe.Sizeof(Metadata{})
 	sizeOfHashmap                = unsafe.Sizeof(HashMap{})
+	sizeOfList                   = unsafe.Sizeof(list{})
 	sizeOfListElement            = unsafe.Sizeof(listElement{})
 	sizeOfLinkedNode             = unsafe.Sizeof(LinkedNode{})
 	sizeOfBlockFreeListContainer = unsafe.Sizeof(BlockFreeContainer{})
@@ -67,8 +70,8 @@ func NewMemoryManager(mem Memory) (*MemoryManager, error) {
 }
 
 type MemoryManager struct {
-	metadata           *Metadata
 	mem                Memory
+	metadata           *Metadata
 	hashMap            *HashMap
 	blockFreeContainer *BlockFreeContainer
 }
@@ -96,11 +99,20 @@ func (m *MemoryManager) MaxBlockSize() uint64 {
 func (m *MemoryManager) init() error {
 	m.metadata = (*Metadata)(m.mem.Ptr())
 	if m.metadata.Magic == 0 {
-		m.metadata.Used = uint64(fixedMetadataSize)
+		m.metadata.Used = uint64(sizeOfMetadata)
 		m.metadata.Magic = magic
 		m.metadata.TotalSize = m.mem.Size()
 		// init fixed size hashmap
-		_, m.metadata.HashMapOffset = m.alloc(uint64(sizeOfHashmap))
+		var hashPtr unsafe.Pointer
+		hashPtr, m.metadata.HashMapOffset = m.alloc(uint64(sizeOfHashmap))
+		hashmap := (*HashMap)(hashPtr)
+		// 分配hashmap的slots array
+		slots := m.calHashmapSlots()
+		slotSize := slots * uint64(sizeOfList)
+		_, slotOffset := m.alloc(slotSize)
+		hashmap.SlotOffset = slotOffset
+		hashmap.SlotLen = uint32(slots)
+		// 分配block free container
 		freePtr, freeOffset := m.alloc(uint64(sizeOfBlockFreeListContainer))
 		freeContainer := (*BlockFreeContainer)(freePtr)
 		freeContainer.Init()
@@ -111,10 +123,21 @@ func (m *MemoryManager) init() error {
 		return errors.New("invalid mem magic")
 	}
 
+	// 如果size变了, 需要移动数据, 并且结构中的指针都需要变动
+	// 所以这里变动内存大小, 就先删除old shared memory, 重新初始化一个新的
+	if m.metadata.TotalSize != m.mem.Size() {
+		return errors.New("memory size changed, need to clear old shared memory")
+	}
+
 	m.hashMap = (*HashMap)(m.offset(m.metadata.HashMapOffset))
 	m.blockFreeContainer = (*BlockFreeContainer)(m.offset(m.metadata.BlockFreeListOffset))
 
 	return nil
+}
+
+func (m *MemoryManager) calHashmapSlots() uint64 {
+	listSize := perHashmapSlotLength * perHashmapElementSize
+	return m.mem.Size()/uint64(listSize) + 1
 }
 
 func (m *MemoryManager) offset(offset uint64) unsafe.Pointer {

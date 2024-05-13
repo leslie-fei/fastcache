@@ -2,6 +2,7 @@ package memlru
 
 import (
 	"errors"
+	"unsafe"
 )
 
 var (
@@ -12,8 +13,9 @@ var (
 
 // HashMap fixed size HashMap
 type HashMap struct {
-	Len   uint32
-	array [1024]list
+	Len        uint32
+	SlotLen    uint32
+	SlotOffset uint64 // slots offset
 }
 
 func (m *HashMap) Get(memMgr *MemoryManager, key string) ([]byte, error) {
@@ -34,7 +36,7 @@ func (m *HashMap) Set(memMgr *MemoryManager, key string, value []byte) error {
 		return ErrValueTooLarge
 	}
 
-	item := m.item(key)
+	item := m.item(memMgr.basePtr(), key)
 	if err := item.Set(memMgr, key, value); err != nil {
 		return err
 	}
@@ -45,7 +47,7 @@ func (m *HashMap) Set(memMgr *MemoryManager, key string, value []byte) error {
 }
 
 func (m *HashMap) Del(memMgr *MemoryManager, key string) error {
-	item := m.item(key)
+	item := m.item(memMgr.basePtr(), key)
 	if err := item.Del(memMgr, key); err != nil {
 		return err
 	}
@@ -53,15 +55,15 @@ func (m *HashMap) Del(memMgr *MemoryManager, key string) error {
 	return nil
 }
 
-func (m *HashMap) item(key string) *list {
+func (m *HashMap) item(base uintptr, key string) *list {
 	hash := xxHashString(key)
-	index := uint64(hash) % uint64(len(m.array))
-	item := &m.array[index]
-	return item
+	index := uint64(hash) % uint64(m.SlotLen)
+	offset := index*uint64(sizeOfList) + m.SlotOffset
+	return (*list)(unsafe.Pointer(base + uintptr(offset)))
 }
 
 func (m *HashMap) get(memMgr *MemoryManager, key string) (*listElement, error) {
-	item := m.item(key)
+	item := m.item(memMgr.basePtr(), key)
 	find := item.Find(memMgr, key)
 	if find != nil {
 		return find, nil

@@ -47,20 +47,20 @@ func (l *list) Set(memMgr *MemoryManager, key string, value []byte) error {
 	}
 	// else not find key in list, need alloc new node
 	// 申请一个数据块
-	listElNode, err := memMgr.allocOne(uint64(sizeOfListElement))
+	elNode, err := memMgr.allocOne(uint64(sizeOfListElement))
 	if err != nil {
 		return err
 	}
-	listEl := (*listElement)(unsafe.Pointer(listElNode.DataPtr(memMgr.basePtr())))
-	if err = listEl.Set(memMgr, key, value); err != nil {
+	el := (*listElement)(unsafe.Pointer(elNode.DataPtr(memMgr.basePtr())))
+	if err = el.Set(memMgr, key, value); err != nil {
 		return err
 	}
 	// 更新list链表, 头插法
 	next := l.Offset
 	// 把item的头指针指向当前的listElNode
-	l.Offset = listElNode.Offset(memMgr.basePtr())
+	l.Offset = elNode.Offset(memMgr.basePtr())
 	// 更新next
-	listElNode.Next = next
+	elNode.Next = next
 	// hashed array len + 1
 	l.Len++
 	return nil
