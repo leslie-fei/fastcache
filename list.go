@@ -11,54 +11,41 @@ func (l *list) Range(memMgr *MemoryManager, f func(el *listElement) bool) {
 	if l.Len == 0 {
 		return
 	}
-	for node := memMgr.toLinkedNode(l.Offset); node != nil; node = memMgr.toLinkedNode(node.Next) {
-		el := l.toListElement(memMgr.basePtr(), node)
+	base := memMgr.basePtr()
+	RangeNode(base, l.Offset, func(node *LinkedNode) bool {
+		el := NodeConvertTo[listElement](base, node)
 		if !f(el) {
-			return
-		}
-	}
-}
-
-func (l *list) Set(memMgr *MemoryManager, key string, value []byte) error {
-	found := false
-	var err error
-	l.Range(memMgr, func(el *listElement) bool {
-		if el.ToKey(memMgr) == key {
-			// found
-			valNode := el.ValNode(memMgr)
-			nodeMax := memMgr.nodeMaxSize(valNode)
-			// 判断是否超过原来的节点最大可以容纳的size
-			if len(value) > int(nodeMax) {
-				// 如果超过需要重新分配一个node来装数据
-				// 释放老节点到freeList
-				el.FreeValue(memMgr)
-				// 申请新的数据节点
-				var node *LinkedNode
-				node, err = memMgr.allocOne(uint64(len(value)))
-				if err != nil {
-					return false
-				}
-				valNode = node
-				// 重新绑定element的val data node
-				el.ValOffset = valNode.Offset(memMgr.basePtr())
-			}
-			valNode.UpdateData(memMgr.basePtr(), value)
-			found = true
-			// break foreach
 			return false
 		}
 		return true
 	})
+}
 
-	if err != nil {
-		return err
-	}
-
-	if found {
+func (l *list) Set(memMgr *MemoryManager, key string, value []byte) error {
+	_, findNode, findEl := l.findNode(memMgr, key)
+	if findNode != nil {
+		// found
+		valNode := findEl.ValNode(memMgr)
+		blockSize := memMgr.blockSize(valNode)
+		// 判断是否超过原来的节点最大可以容纳的size
+		if len(value) > int(blockSize) {
+			// 如果超过需要重新分配一个node来装数据
+			// 释放老节点到freeList
+			findEl.FreeValue(memMgr)
+			// 申请新的数据节点
+			var node *LinkedNode
+			node, err := memMgr.allocOne(uint64(len(value)))
+			if err != nil {
+				return err
+			}
+			valNode = node
+			// 重新绑定element的val data node
+			findEl.ValOffset = valNode.Offset(memMgr.basePtr())
+		}
+		valNode.UpdateData(memMgr.basePtr(), value)
 		return nil
 	}
-
-	// not found should to alloc one data node
+	// else not find key in list, need alloc new node
 	// 申请一个数据块
 	listElNode, err := memMgr.allocOne(uint64(sizeOfListElement))
 	if err != nil {
@@ -80,38 +67,22 @@ func (l *list) Set(memMgr *MemoryManager, key string, value []byte) error {
 }
 
 func (l *list) Del(memMgr *MemoryManager, key string) error {
-	var findNode *LinkedNode
-	// 头节点的偏移量
-	offset := l.Offset
-	var prev uint64
-	for i := 0; i < int(l.Len); i++ {
-		elNode := memMgr.toLinkedNode(offset)
-		el := l.toListElement(memMgr.basePtr(), elNode)
-		if el.ToKey(memMgr) == key {
-			findNode = elNode
-			break
-		}
-		prev = offset
-		offset = elNode.Next
-	}
+	prevNode, findNode, findEl := l.findNode(memMgr, key)
 
 	// not found
 	if findNode == nil {
 		return ErrNotFound
 	}
 
-	if prev == 0 {
+	if prevNode == nil {
 		// 就说明这个是头节点, 需要更新list的头节点指向
 		l.Offset = findNode.Next
 	} else {
-		prevNode := memMgr.toLinkedNode(prev)
 		prevNode.Next = findNode.Next
 	}
 
-	elPtr := memMgr.offset(findNode.DataOffset)
-	el := (*listElement)(elPtr)
 	// free listElement key and value data
-	el.Free(memMgr)
+	findEl.Free(memMgr)
 	// free list element node
 	memMgr.free(findNode)
 	l.Len--
@@ -123,14 +94,7 @@ func (l *list) Del(memMgr *MemoryManager, key string) error {
 }
 
 func (l *list) Find(memMgr *MemoryManager, key string) *listElement {
-	var find *listElement
-	l.Range(memMgr, func(el *listElement) bool {
-		if el.ToKey(memMgr) == key {
-			find = el
-			return false
-		}
-		return true
-	})
+	_, _, find := l.findNode(memMgr, key)
 	return find
 }
 
@@ -139,8 +103,18 @@ func (l *list) Reset() {
 	l.Offset = 0
 }
 
-func (l *list) toListElement(basePtr uintptr, node *LinkedNode) *listElement {
-	return (*listElement)(unsafe.Pointer(node.DataPtr(basePtr)))
+func (l *list) findNode(memMgr *MemoryManager, key string) (prevNode *LinkedNode, findNode *LinkedNode, findEl *listElement) {
+	RangeNode(memMgr.basePtr(), l.Offset, func(node *LinkedNode) bool {
+		el := NodeConvertTo[listElement](memMgr.basePtr(), node)
+		if el.ToKey(memMgr) == key {
+			findNode = node
+			findEl = el
+			return false
+		}
+		prevNode = node
+		return true
+	})
+	return
 }
 
 // listElement 是一个keyNode + valNode组成
@@ -189,10 +163,6 @@ func (l *listElement) FreeKey(memMgr *MemoryManager) {
 func (l *listElement) FreeValue(memMgr *MemoryManager) {
 	valNode := memMgr.toLinkedNode(l.ValOffset)
 	memMgr.free(valNode)
-}
-
-func (l *listElement) KeyNode(memMgr *MemoryManager) *LinkedNode {
-	return memMgr.toLinkedNode(l.KeyOffset)
 }
 
 func (l *listElement) ValNode(memMgr *MemoryManager) *LinkedNode {

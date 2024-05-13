@@ -222,7 +222,7 @@ func (m *MemoryManager) free(node *LinkedNode) {
 	freeList.Len++
 }
 
-func (m *MemoryManager) nodeMaxSize(node *LinkedNode) uint64 {
+func (m *MemoryManager) blockSize(node *LinkedNode) uint64 {
 	freeList := m.blockFreeContainer.GetIndex(node.FreeBlockIndex)
 	return freeList.Size
 }
