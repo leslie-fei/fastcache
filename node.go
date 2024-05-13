@@ -7,10 +7,10 @@ import (
 
 // LinkedNode 用来存储对应数据的数据链表节点
 type LinkedNode struct {
-	Next       uint64
-	Len        uint32
-	DataOffset uint64
-	FreeType   int8
+	Next           uint64
+	Len            uint32
+	DataOffset     uint64
+	FreeBlockIndex uint8
 }
 
 func (ln *LinkedNode) Reset() {

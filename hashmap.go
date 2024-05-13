@@ -28,6 +28,9 @@ func (m *HashMap) Get(memMgr *MemoryManager, key string) ([]byte, error) {
 }
 
 func (m *HashMap) Set(memMgr *MemoryManager, key string, value []byte) error {
+	if len(value) > int(memMgr.MaxBlockSize()) {
+		return ErrValueTooLarge
+	}
 	item := m.item(key)
 
 	found := false
@@ -36,8 +39,9 @@ func (m *HashMap) Set(memMgr *MemoryManager, key string, value []byte) error {
 		if el.ToKey() == key {
 			// found
 			valNode := memMgr.toLinkedNode(el.ValOffset)
+			nodeMax := memMgr.nodeMaxSize(valNode)
 			// 判断是否超过原来的节点最大可以容纳的size
-			if len(value) > DataSizeMap[FreeDataType(valNode.FreeType)] {
+			if len(value) > int(nodeMax) {
 				// 如果超过需要重新分配一个node来装数据
 				oldNode := valNode
 				var node *LinkedNode
@@ -134,7 +138,14 @@ func (m *HashMap) Del(memMgr *MemoryManager, key string) error {
 		prevNode := memMgr.toLinkedNode(prev)
 		prevNode.Next = findNode.Next
 	}
+
+	elPtr := memMgr.offset(findNode.DataOffset)
+	el := (*listElement)(elPtr)
+	elValNode := memMgr.toLinkedNode(el.ValOffset)
+	// free list element data node
 	memMgr.free(findNode)
+	// free list element val node
+	memMgr.free(elValNode)
 	item.Len--
 	m.Len--
 	// list中没有任何element, 就把head offset = 0
