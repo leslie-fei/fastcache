@@ -16,7 +16,8 @@ const (
 )
 
 var (
-	ErrOutOfMemory = errors.New("out of memory")
+	ErrOutOfMemory        = errors.New("out of memory")
+	ErrMemorySizeTooSmall = errors.New("memory size too small")
 )
 
 const (
@@ -33,6 +34,7 @@ var (
 	sizeOfListElement            = unsafe.Sizeof(listElement{})
 	sizeOfLinkedNode             = unsafe.Sizeof(LinkedNode{})
 	sizeOfBlockFreeListContainer = unsafe.Sizeof(BlockFreeContainer{})
+	sizeOfLocker                 = unsafe.Sizeof(Locker{})
 )
 
 // Memory 内存块抽象
@@ -52,11 +54,25 @@ type Memory interface {
 }
 
 type Metadata struct {
+	GlobalLocker        Locker // 全局锁
 	Magic               uint64
 	TotalSize           uint64
 	Used                uint64
 	HashMapOffset       uint64
 	BlockFreeListOffset uint64
+	Lockers             [192]Locker // 分段锁
+}
+
+func (m *Metadata) Reset() {
+	m.Magic = 0
+	m.TotalSize = 0
+	m.Used = 0
+	m.HashMapOffset = 0
+	m.BlockFreeListOffset = 0
+	for i := 0; i < len(m.Lockers); i++ {
+		locker := &m.Lockers[i]
+		locker.Reset()
+	}
 }
 
 func NewMemoryManager(mem Memory) (*MemoryManager, error) {
@@ -97,8 +113,14 @@ func (m *MemoryManager) MaxBlockSize() uint64 {
 }
 
 func (m *MemoryManager) init() error {
+	if m.mem.Size() < MB {
+		return ErrMemorySizeTooSmall
+	}
 	m.metadata = (*Metadata)(m.mem.Ptr())
+	m.metadata.GlobalLocker.Lock()
+	defer m.metadata.GlobalLocker.Unlock()
 	if m.metadata.Magic == 0 {
+		m.metadata.Reset()
 		m.metadata.Used = uint64(sizeOfMetadata)
 		m.metadata.Magic = magic
 		m.metadata.TotalSize = m.mem.Size()

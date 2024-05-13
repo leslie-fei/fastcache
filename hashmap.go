@@ -2,7 +2,6 @@ package memlru
 
 import (
 	"errors"
-	"unsafe"
 )
 
 var (
@@ -36,7 +35,9 @@ func (m *HashMap) Set(memMgr *MemoryManager, key string, value []byte) error {
 		return ErrValueTooLarge
 	}
 
-	item := m.item(memMgr.basePtr(), key)
+	item, locker := m.item(memMgr, key)
+	locker.Lock()
+	defer locker.Unlock()
 	if err := item.Set(memMgr, key, value); err != nil {
 		return err
 	}
@@ -47,7 +48,9 @@ func (m *HashMap) Set(memMgr *MemoryManager, key string, value []byte) error {
 }
 
 func (m *HashMap) Del(memMgr *MemoryManager, key string) error {
-	item := m.item(memMgr.basePtr(), key)
+	item, locker := m.item(memMgr, key)
+	locker.Lock()
+	defer locker.Unlock()
 	if err := item.Del(memMgr, key); err != nil {
 		return err
 	}
@@ -55,15 +58,17 @@ func (m *HashMap) Del(memMgr *MemoryManager, key string) error {
 	return nil
 }
 
-func (m *HashMap) item(base uintptr, key string) *list {
+func (m *HashMap) item(memMgr *MemoryManager, key string) (*list, *Locker) {
 	hash := xxHashString(key)
 	index := uint64(hash) % uint64(m.SlotLen)
 	offset := index*uint64(sizeOfList) + m.SlotOffset
-	return (*list)(unsafe.Pointer(base + uintptr(offset)))
+	lockerIdx := uint64(hash) % uint64(len(memMgr.metadata.Lockers))
+	locker := &memMgr.metadata.Lockers[lockerIdx]
+	return (*list)(memMgr.offset(offset)), locker
 }
 
 func (m *HashMap) get(memMgr *MemoryManager, key string) (*listElement, error) {
-	item := m.item(memMgr.basePtr(), key)
+	item, _ := m.item(memMgr, key)
 	find := item.Find(memMgr, key)
 	if find != nil {
 		return find, nil

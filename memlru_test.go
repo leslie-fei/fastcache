@@ -7,11 +7,26 @@ import (
 	"testing"
 	"time"
 
-	"memlru/shm"
+	"memlru/mmap"
 )
 
 func TestMemoryManager(t *testing.T) {
-	memMgr := newMemoryManager("/tmp/TestMemoryManager", 32*MB)
+	mem := mmap.NewMemory("/tmp/TestMemoryManager", 32*MB)
+	if err := mem.Attach(); err != nil {
+		panic(err)
+	}
+
+	defer func() {
+		if err := mem.Detach(); err != nil {
+			panic(err)
+		}
+	}()
+
+	memMgr, err := NewMemoryManager(mem)
+	if err != nil {
+		panic(err)
+	}
+
 	size := 1
 	data := make([]byte, size)
 	_, _ = rand.Read(data)
@@ -48,7 +63,22 @@ func TestMemoryManager(t *testing.T) {
 }
 
 func TestMemoryManager_Set(t *testing.T) {
-	memMgr := newMemoryManager("/tmp/TestMemoryManager_Set", 32*MB)
+	mem := mmap.NewMemory("/tmp/TestMemoryManager_Set", 32*MB)
+	if err := mem.Attach(); err != nil {
+		panic(err)
+	}
+
+	defer func() {
+		if err := mem.Detach(); err != nil {
+			panic(err)
+		}
+	}()
+
+	memMgr, err := NewMemoryManager(mem)
+	if err != nil {
+		panic(err)
+	}
+
 	key := "k1"
 	value := []byte("v1")
 	var counter int64
@@ -64,19 +94,4 @@ func TestMemoryManager_Set(t *testing.T) {
 	}
 	elapsed := time.Since(start)
 	t.Logf("QPS: %d elapsed: %s\n", int(float64(counter)/elapsed.Seconds()), elapsed)
-}
-
-func newMemoryManager(key string, size int) *MemoryManager {
-	mem := shm.NewMemory(key, uint64(size), true)
-	//mem := mmap.NewMemory(key, uint64(size))
-	if err := mem.Attach(); err != nil {
-		panic(err)
-	}
-
-	memMgr, err := NewMemoryManager(mem)
-	if err != nil {
-		panic(err)
-	}
-
-	return memMgr
 }
