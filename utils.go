@@ -3,11 +3,11 @@ package memlru
 import "unsafe"
 
 // NodeConvertTo node data convert to *T
-func NodeConvertTo[T any](base uintptr, node *LinkedNode) *T {
+func NodeConvertTo[T any](base uintptr, node *DataNode) *T {
 	return (*T)(unsafe.Pointer(node.DataPtr(base)))
 }
 
-func RangeNode(base uintptr, offset uint64, f func(node *LinkedNode) bool) {
+func RangeNode(base uintptr, offset uint64, f func(node *DataNode) bool) {
 	if offset == 0 {
 		return
 	}
@@ -18,9 +18,9 @@ func RangeNode(base uintptr, offset uint64, f func(node *LinkedNode) bool) {
 	}
 }
 
-func ToLinkedNode(base uintptr, offset uint64) *LinkedNode {
+func ToLinkedNode(base uintptr, offset uint64) *DataNode {
 	if offset == 0 {
 		return nil
 	}
-	return (*LinkedNode)(unsafe.Pointer(base + uintptr(offset)))
+	return (*DataNode)(unsafe.Pointer(base + uintptr(offset)))
 }

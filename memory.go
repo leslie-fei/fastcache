@@ -32,7 +32,7 @@ var (
 	sizeOfHashmap                = unsafe.Sizeof(HashMap{})
 	sizeOfList                   = unsafe.Sizeof(list{})
 	sizeOfListElement            = unsafe.Sizeof(listElement{})
-	sizeOfLinkedNode             = unsafe.Sizeof(LinkedNode{})
+	sizeOfLinkedNode             = unsafe.Sizeof(DataNode{})
 	sizeOfBlockFreeListContainer = unsafe.Sizeof(BlockFreeContainer{})
 	sizeOfLocker                 = unsafe.Sizeof(Locker{})
 )
@@ -174,11 +174,11 @@ func (m *MemoryManager) basePtr() uintptr {
 	return uintptr(m.mem.Ptr())
 }
 
-func (m *MemoryManager) toLinkedNode(offset uint64) *LinkedNode {
+func (m *MemoryManager) toLinkedNode(offset uint64) *DataNode {
 	if offset == 0 {
 		return nil
 	}
-	return (*LinkedNode)(m.mem.PtrOffset(offset))
+	return (*DataNode)(m.mem.PtrOffset(offset))
 }
 
 // alloc memory return ptr and offset of base ptr
@@ -189,7 +189,7 @@ func (m *MemoryManager) alloc(size uint64) (ptr unsafe.Pointer, offset uint64) {
 	return
 }
 
-func (m *MemoryManager) allocOne(dataSize uint64) (*LinkedNode, error) {
+func (m *MemoryManager) allocOne(dataSize uint64) (*DataNode, error) {
 	nodes, err := m.allocMany(1, dataSize)
 	if err != nil {
 		return nil, err
@@ -197,7 +197,7 @@ func (m *MemoryManager) allocOne(dataSize uint64) (*LinkedNode, error) {
 	return nodes[0], nil
 }
 
-func (m *MemoryManager) allocMany(num int, dataSize uint64) ([]*LinkedNode, error) {
+func (m *MemoryManager) allocMany(num int, dataSize uint64) ([]*DataNode, error) {
 	freeList, err := m.blockFreeContainer.Get(dataSize)
 	if err != nil {
 		return nil, err
@@ -220,7 +220,7 @@ func (m *MemoryManager) allocMany(num int, dataSize uint64) ([]*LinkedNode, erro
 		head := freeList.First(m)
 		// 头插法
 		for i := 0; i < int(nodeLen); i++ {
-			node := (*LinkedNode)(m.offset(offset))
+			node := (*DataNode)(m.offset(offset))
 			node.Reset()
 			// 填写数据的指针位置
 			node.DataOffset = offset + uint64(sizeOfLinkedNode)
@@ -241,10 +241,10 @@ func (m *MemoryManager) allocMany(num int, dataSize uint64) ([]*LinkedNode, erro
 		}
 	}
 
-	nodes := make([]*LinkedNode, 0, num)
+	nodes := make([]*DataNode, 0, num)
 	for i := 0; i < num; i++ {
 		// 把第一个链表节点取出
-		node := (*LinkedNode)(m.offset(freeList.Head))
+		node := (*DataNode)(m.offset(freeList.Head))
 		freeList.Head = node.Next
 		freeList.Len--
 		// 断开与这个链表的关联, 变成一个独立的node
@@ -255,7 +255,7 @@ func (m *MemoryManager) allocMany(num int, dataSize uint64) ([]*LinkedNode, erro
 	return nodes, nil
 }
 
-func (m *MemoryManager) free(node *LinkedNode) {
+func (m *MemoryManager) free(node *DataNode) {
 	node.Reset()
 	freeList := m.blockFreeContainer.GetIndex(node.FreeBlockIndex)
 	if freeList.Len == 0 {
@@ -267,7 +267,7 @@ func (m *MemoryManager) free(node *LinkedNode) {
 	freeList.Len++
 }
 
-func (m *MemoryManager) blockSize(node *LinkedNode) uint64 {
+func (m *MemoryManager) blockSize(node *DataNode) uint64 {
 	freeList := m.blockFreeContainer.GetIndex(node.FreeBlockIndex)
 	return freeList.Size
 }

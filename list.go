@@ -12,7 +12,7 @@ func (l *list) Range(memMgr *MemoryManager, f func(el *listElement) bool) {
 		return
 	}
 	base := memMgr.basePtr()
-	RangeNode(base, l.Offset, func(node *LinkedNode) bool {
+	RangeNode(base, l.Offset, func(node *DataNode) bool {
 		el := NodeConvertTo[listElement](base, node)
 		if !f(el) {
 			return false
@@ -33,7 +33,7 @@ func (l *list) Set(memMgr *MemoryManager, key string, value []byte) error {
 			// 释放老节点到freeList
 			findEl.FreeValue(memMgr)
 			// 申请新的数据节点
-			var node *LinkedNode
+			var node *DataNode
 			node, err := memMgr.allocOne(uint64(len(value)))
 			if err != nil {
 				return err
@@ -103,8 +103,8 @@ func (l *list) Reset() {
 	l.Offset = 0
 }
 
-func (l *list) findNode(memMgr *MemoryManager, key string) (prevNode *LinkedNode, findNode *LinkedNode, findEl *listElement) {
-	RangeNode(memMgr.basePtr(), l.Offset, func(node *LinkedNode) bool {
+func (l *list) findNode(memMgr *MemoryManager, key string) (prevNode *DataNode, findNode *DataNode, findEl *listElement) {
+	RangeNode(memMgr.basePtr(), l.Offset, func(node *DataNode) bool {
 		el := NodeConvertTo[listElement](memMgr.basePtr(), node)
 		if el.ToKey(memMgr) == key {
 			findNode = node
@@ -165,6 +165,6 @@ func (l *listElement) FreeValue(memMgr *MemoryManager) {
 	memMgr.free(valNode)
 }
 
-func (l *listElement) ValNode(memMgr *MemoryManager) *LinkedNode {
+func (l *listElement) ValNode(memMgr *MemoryManager) *DataNode {
 	return memMgr.toLinkedNode(l.ValOffset)
 }

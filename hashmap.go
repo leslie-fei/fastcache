@@ -22,7 +22,7 @@ func (m *HashMap) Get(memMgr *MemoryManager, key string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	node := (*LinkedNode)(memMgr.offset(el.ValOffset))
+	node := (*DataNode)(memMgr.offset(el.ValOffset))
 	return node.Data(memMgr.basePtr()), nil
 }
 

@@ -42,15 +42,15 @@ func (b *BlockFreeContainer) MaxSize() uint64 {
 }
 
 type BlockFreeList struct {
-	Head  uint64 // head of data LinkedNode
+	Head  uint64 // head of data DataNode
 	Len   uint32 // data len
 	Size  uint64 // block bytes size
 	Index uint8
 }
 
-func (bl *BlockFreeList) First(mem *MemoryManager) *LinkedNode {
+func (bl *BlockFreeList) First(mem *MemoryManager) *DataNode {
 	if bl.Len == 0 {
 		return nil
 	}
-	return (*LinkedNode)(mem.offset(bl.Head))
+	return (*DataNode)(mem.offset(bl.Head))
 }
