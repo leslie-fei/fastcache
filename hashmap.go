@@ -18,11 +18,14 @@ type HashMap struct {
 }
 
 func (m *HashMap) Get(memMgr *MemoryManager, key string) ([]byte, error) {
-	el, err := m.get(memMgr, key)
-	if err != nil {
-		return nil, err
+	item, locker := m.item(memMgr, key)
+	locker.RLock()
+	defer locker.RUnlock()
+	find := item.Find(memMgr, key)
+	if find == nil {
+		return nil, ErrNotFound
 	}
-	node := (*DataNode)(memMgr.offset(el.ValOffset))
+	node := (*DataNode)(memMgr.offset(find.ValOffset))
 	return node.Data(memMgr.basePtr()), nil
 }
 
@@ -65,13 +68,4 @@ func (m *HashMap) item(memMgr *MemoryManager, key string) (*list, *Locker) {
 	lockerIdx := uint64(hash) % uint64(len(memMgr.metadata.Lockers))
 	locker := &memMgr.metadata.Lockers[lockerIdx]
 	return (*list)(memMgr.offset(offset)), locker
-}
-
-func (m *HashMap) get(memMgr *MemoryManager, key string) (*listElement, error) {
-	item, _ := m.item(memMgr, key)
-	find := item.Find(memMgr, key)
-	if find != nil {
-		return find, nil
-	}
-	return nil, ErrNotFound
 }

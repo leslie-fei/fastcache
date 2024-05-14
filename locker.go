@@ -21,6 +21,15 @@ func (l *Locker) Unlock() {
 	}
 }
 
+func (l *Locker) RLock() {
+	// TODO read lock
+	l.Lock()
+}
+
+func (l *Locker) RUnlock() {
+	l.Unlock()
+}
+
 func (l *Locker) Reset() {
 	l.lock = 0
 }
