@@ -1,6 +1,9 @@
 package memlru
 
-import "unsafe"
+import (
+	"reflect"
+	"unsafe"
+)
 
 type list struct {
 	Len    uint32
@@ -106,7 +109,7 @@ func (l *list) Reset() {
 func (l *list) findNode(memMgr *MemoryManager, key string) (prevNode *DataNode, findNode *DataNode, findEl *listElement) {
 	RangeNode(memMgr.basePtr(), l.Offset, func(node *DataNode) bool {
 		el := NodeConvertTo[listElement](memMgr.basePtr(), node)
-		if el.ToKey(memMgr) == key {
+		if el.Equals(memMgr, key) {
 			findNode = node
 			findEl = el
 			return false
@@ -148,6 +151,16 @@ func (l *listElement) Set(memMgr *MemoryManager, key string, value []byte) error
 func (l *listElement) ToKey(memMgr *MemoryManager) string {
 	node := memMgr.toLinkedNode(l.KeyOffset)
 	return string(node.Data(memMgr.basePtr()))
+}
+
+func (l *listElement) Equals(memMgr *MemoryManager, key string) bool {
+	node := memMgr.toLinkedNode(l.KeyOffset)
+	if len(key) != int(node.Len) {
+		return false
+	}
+	ptr := node.DataPtr(memMgr.basePtr())
+	kh := (*reflect.StringHeader)(unsafe.Pointer(&key))
+	return memequal(unsafe.Pointer(ptr), unsafe.Pointer(kh.Data), uintptr(len(key)))
 }
 
 func (l *listElement) Free(memMgr *MemoryManager) {

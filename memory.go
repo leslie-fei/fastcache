@@ -9,6 +9,10 @@ import (
 //go:noescape
 func memmove(dst, src unsafe.Pointer, size uintptr)
 
+//go:linkname memequal runtime.memequal
+//go:noescape
+func memequal(a, b unsafe.Pointer, size uintptr) bool
+
 const (
 	KB = 1024
 	MB = 1024 * KB
