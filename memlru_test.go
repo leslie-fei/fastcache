@@ -1,9 +1,9 @@
 package memlru
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
-	"math/rand"
 	"testing"
 	"time"
 
@@ -63,7 +63,7 @@ func TestMemoryManager(t *testing.T) {
 }
 
 func TestMemoryManager_Set(t *testing.T) {
-	mem := mmap.NewMemory("/tmp/TestMemoryManager_Set", 32*MB)
+	mem := mmap.NewMemory("/tmp/TestMemoryManager_SetXXX", MB)
 	if err := mem.Attach(); err != nil {
 		panic(err)
 	}

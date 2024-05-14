@@ -18,7 +18,7 @@ func main() {
 
 	// Example command: go run main.go --port 8080 --multicore=true
 	flag.IntVar(&size, "m", 64, "memory limit unit MB default 64")
-	flag.StringVar(&key, "k", "/tmp/sharedMem", "attach share memory path")
+	flag.StringVar(&key, "k", "/tmp/TestSharedMemory", "attach share memory path")
 	flag.Parse()
 
 	size = size * memlru.MB
