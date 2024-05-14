@@ -24,7 +24,7 @@ func (l *list) Range(memMgr *MemoryManager, f func(el *listElement) bool) {
 	})
 }
 
-func (l *list) Set(memMgr *MemoryManager, key string, value []byte) error {
+func (l *list) Set(memMgr *MemoryManager, key string, value []byte) (exists bool, err error) {
 	_, findNode, findEl := l.findNode(memMgr, key)
 	if findNode != nil {
 		// found
@@ -37,26 +37,27 @@ func (l *list) Set(memMgr *MemoryManager, key string, value []byte) error {
 			findEl.FreeValue(memMgr)
 			// 申请新的数据节点
 			var node *DataNode
-			node, err := memMgr.allocOne(uint64(len(value)))
+			node, err = memMgr.allocOne(uint64(len(value)))
 			if err != nil {
-				return err
+				return
 			}
 			valNode = node
 			// 重新绑定element的val data node
 			findEl.ValOffset = valNode.Offset(memMgr.basePtr())
 		}
 		valNode.UpdateData(memMgr.basePtr(), value)
-		return nil
+		return true, nil
 	}
 	// else not find key in list, need alloc new node
 	// 申请一个数据块
-	elNode, err := memMgr.allocOne(uint64(sizeOfListElement))
+	var elNode *DataNode
+	elNode, err = memMgr.allocOne(uint64(sizeOfListElement))
 	if err != nil {
-		return err
+		return
 	}
 	el := (*listElement)(unsafe.Pointer(elNode.DataPtr(memMgr.basePtr())))
 	if err = el.Set(memMgr, key, value); err != nil {
-		return err
+		return
 	}
 	// 更新list链表, 头插法
 	next := l.Offset
@@ -66,7 +67,7 @@ func (l *list) Set(memMgr *MemoryManager, key string, value []byte) error {
 	elNode.Next = next
 	// hashed array len + 1
 	l.Len++
-	return nil
+	return false, nil
 }
 
 func (l *list) Del(memMgr *MemoryManager, key string) error {

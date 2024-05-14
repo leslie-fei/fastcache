@@ -41,11 +41,14 @@ func (m *HashMap) Set(memMgr *MemoryManager, key string, value []byte) error {
 	item, locker := m.item(memMgr, key)
 	locker.Lock()
 	defer locker.Unlock()
-	if err := item.Set(memMgr, key, value); err != nil {
+	exists, err := item.Set(memMgr, key, value)
+	if err != nil {
 		return err
 	}
-	// hashmap total len + 1
-	m.Len++
+	// if is new, hashmap total len + 1
+	if !exists {
+		m.Len++
+	}
 
 	return nil
 }
