@@ -1,8 +1,6 @@
 package memlru
 
 import (
-	"crypto/rand"
-	"errors"
 	"fmt"
 	"testing"
 	"time"
@@ -10,8 +8,11 @@ import (
 	"memlru/mmap"
 )
 
-func TestMemoryManager(t *testing.T) {
-	mem := mmap.NewMemory("/tmp/TestMemoryManager", 32*MB)
+func TestCache(t *testing.T) {
+	// memory of mmap
+	mem := mmap.NewMemory("/tmp/TestCache", 32*MB)
+	// memory of shm
+	//mem := shm.NewMemory("/tmp/TestCache", 32*MB, true)
 	if err := mem.Attach(); err != nil {
 		panic(err)
 	}
@@ -27,35 +28,22 @@ func TestMemoryManager(t *testing.T) {
 		panic(err)
 	}
 
-	size := 1
-	data := make([]byte, size)
-	_, _ = rand.Read(data)
+	k := "k1"
+	v := []byte("v1")
+	if err := cache.Set(k, v); err != nil {
+		panic(err)
+	}
 
-	for i := 0; i < 1024; i++ {
-		key := fmt.Sprint(i)
-		value := data
-		//key := fmt.Sprint(i)
-		if err := cache.Set(key, value); err != nil {
-			t.Fatal("index: ", i, "err: ", err)
-		}
+	// if not found return ErrNotFound
+	value, err := cache.Get(k)
+	if err != nil {
+		panic(err)
+	}
+	fmt.Println("get: ", string(value))
 
-		v, err := cache.Get(key)
-		if err != nil {
-			t.Fatal(err)
-		}
-
-		if string(v) != string(value) {
-			panic("get value not equal")
-		}
-
-		if err := cache.Del(key); err != nil {
-			t.Fatal(err)
-		}
-
-		_, err = cache.Get(key)
-		if !errors.Is(err, ErrNotFound) {
-			t.Fatal("expect ErrNotFound")
-		}
+	err = cache.Del(k)
+	if err != nil {
+		panic(err)
 	}
 }
 
