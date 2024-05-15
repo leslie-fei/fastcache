@@ -31,6 +31,8 @@ type Cache interface {
 	Get(key string) ([]byte, error)
 	Set(key string, value []byte) error
 	Del(key string) error
+	Len() uint64
+	Peek(key string) ([]byte, error)
 }
 
 func NewCache(mem Memory) (Cache, error) {
@@ -98,6 +100,15 @@ func (l *lru) Get(key string) ([]byte, error) {
 	lruNode := (*listNode)(l.memMgr.offset(el.lruListNodeOffset))
 	l.list.MoveToFront(l.memMgr, lruNode)
 	return value, nil
+}
+
+func (l *lru) Peek(key string) ([]byte, error) {
+	hash := xxHashString(key)
+	locker := l.locker(hash)
+	locker.RLock()
+	defer locker.RUnlock()
+	_, value, err := l.hashMap.Get(l.memMgr, hash, key)
+	return value, err
 }
 
 func (l *lru) Set(key string, value []byte) error {
