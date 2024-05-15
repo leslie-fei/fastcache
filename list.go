@@ -1,184 +1,175 @@
 package memlru
 
-import (
-	"reflect"
-	"unsafe"
+import "unsafe"
+
+var (
+	sizeOfLRUNode = unsafe.Sizeof(listNode{})
+	sizeOfLRU     = unsafe.Sizeof(list{})
 )
 
+// listNode of list
+type listNode struct {
+	prev     uint64 // prev listNode
+	next     uint64 // next listNode
+	dataNode uint64 // current DataNode offset
+}
+
+func (ln *listNode) SetPrev(memMgr *MemoryManager, node *listNode) {
+	ln.prev = uint64(uintptr(unsafe.Pointer(node)) - memMgr.basePtr())
+}
+
+func (ln *listNode) SetNext(memMgr *MemoryManager, node *listNode) {
+	ln.next = uint64(uintptr(unsafe.Pointer(node)) - memMgr.basePtr())
+}
+
+func (ln *listNode) Prev(memMgr *MemoryManager) *listNode {
+	return (*listNode)(unsafe.Pointer(memMgr.basePtr() + uintptr(ln.prev)))
+}
+
+func (ln *listNode) Next(memMgr *MemoryManager) *listNode {
+	return (*listNode)(unsafe.Pointer(memMgr.basePtr() + uintptr(ln.next)))
+}
+
+// Offset return *listNode offset base ptr
+func (ln *listNode) Offset(memMgr *MemoryManager) uint64 {
+	return uint64(uintptr(unsafe.Pointer(ln)) - memMgr.basePtr())
+}
+
+// list double linked list
 type list struct {
-	Len    uint32
-	Offset uint64 // listElement linkedNode offset
+	root listNode
+	len  uint64
 }
 
-func (l *list) Range(memMgr *MemoryManager, f func(el *listElement) bool) {
-	if l.Len == 0 {
+func (l *list) Init(memMgr *MemoryManager) {
+	l.root.SetNext(memMgr, &l.root)
+	l.root.SetPrev(memMgr, &l.root)
+	l.len = 0
+}
+
+func (l *list) Len() uint64 {
+	return l.len
+}
+
+func (l *list) Front(memMgr *MemoryManager) *listNode {
+	if l.len == 0 {
+		return nil
+	}
+	return l.root.Next(memMgr)
+}
+
+func (l *list) Back(memMgr *MemoryManager) *listNode {
+	if l.len == 0 {
+		return nil
+	}
+	return l.root.Prev(memMgr)
+}
+
+func (l *list) Remove(memMgr *MemoryManager, e *listNode) {
+	l.remove(memMgr, e)
+}
+
+func (l *list) PushFront(memMgr *MemoryManager, dataNode uint64) (*listNode, error) {
+	return l.insertValue(memMgr, dataNode, &l.root)
+}
+
+func (l *list) PushBack(memMgr *MemoryManager, dataNode uint64) (*listNode, error) {
+	return l.insertValue(memMgr, dataNode, l.root.Prev(memMgr))
+}
+
+func (l *list) MoveToFront(memMgr *MemoryManager, e *listNode) {
+	/**
+	if e.list != l || l.root.next == e {
 		return
 	}
-	base := memMgr.basePtr()
-	RangeNode(base, l.Offset, func(node *DataNode) bool {
-		el := NodeConvertTo[listElement](base, node)
-		if !f(el) {
-			return false
-		}
-		return true
-	})
-}
-
-func (l *list) Set(memMgr *MemoryManager, key string, value []byte) (exists bool, err error) {
-	_, findNode, findEl := l.findNode(memMgr, key)
-	if findNode != nil {
-		// found
-		valNode := findEl.ValNode(memMgr)
-		blockSize := memMgr.blockSize(valNode)
-		// 判断是否超过原来的节点最大可以容纳的size
-		if len(value) > int(blockSize) {
-			// 如果超过需要重新分配一个node来装数据
-			// 释放老节点到freeList
-			findEl.FreeValue(memMgr)
-			// 申请新的数据节点
-			var node *DataNode
-			node, err = memMgr.allocOne(uint64(len(value)))
-			if err != nil {
-				return
-			}
-			valNode = node
-			// 重新绑定element的val data node
-			findEl.ValOffset = valNode.Offset(memMgr.basePtr())
-		}
-		valNode.UpdateData(memMgr.basePtr(), value)
-		return true, nil
-	}
-	// else not find key in list, need alloc new node
-	// 申请一个数据块
-	var elNode *DataNode
-	elNode, err = memMgr.allocOne(uint64(sizeOfListElement))
-	if err != nil {
+	l.move(e, &l.root)
+	*/
+	if l.root.next == e.Offset(memMgr) {
 		return
 	}
-	el := (*listElement)(unsafe.Pointer(elNode.DataPtr(memMgr.basePtr())))
-	if err = el.Set(memMgr, key, value); err != nil {
+	l.move(memMgr, e, &l.root)
+}
+
+func (l *list) MoveToBack(memMgr *MemoryManager, e *listNode) {
+	/**
+	if e.list != l || l.root.prev == e {
 		return
 	}
-	// 更新list链表, 头插法
-	next := l.Offset
-	// 把item的头指针指向当前的listElNode
-	l.Offset = elNode.Offset(memMgr.basePtr())
-	// 更新next
-	elNode.Next = next
-	// hashed array len + 1
-	l.Len++
-	return false, nil
-}
-
-func (l *list) Del(memMgr *MemoryManager, key string) error {
-	prevNode, findNode, findEl := l.findNode(memMgr, key)
-
-	// not found
-	if findNode == nil {
-		return ErrNotFound
+	l.move(e, l.root.prev)
+	*/
+	if l.root.prev == e.Offset(memMgr) {
+		return
 	}
-
-	if prevNode == nil {
-		// 就说明这个是头节点, 需要更新list的头节点指向
-		l.Offset = findNode.Next
-	} else {
-		prevNode.Next = findNode.Next
-	}
-
-	// free listElement key and value data
-	findEl.Free(memMgr)
-	// free list element node
-	memMgr.free(findNode)
-	l.Len--
-	// list中没有任何element, 就把head offset = 0
-	if l.Len == 0 {
-		l.Offset = 0
-	}
-	return nil
+	l.move(memMgr, e, l.root.Prev(memMgr))
 }
 
-func (l *list) Find(memMgr *MemoryManager, key string) *listElement {
-	_, _, find := l.findNode(memMgr, key)
-	return find
+func (l *list) insert(memMgr *MemoryManager, e, at *listNode) *listNode {
+	/**
+	e.prev = at
+	e.next = at.next
+	e.prev.next = e
+	e.next.prev = e
+	e.hashmapSlot = l
+	l.len++
+	*/
+	e.SetPrev(memMgr, at)
+	e.SetNext(memMgr, at.Next(memMgr))
+	e.Prev(memMgr).SetNext(memMgr, e)
+	e.Next(memMgr).SetPrev(memMgr, e)
+	l.len++
+	return e
 }
 
-func (l *list) Reset() {
-	l.Len = 0
-	l.Offset = 0
-}
-
-func (l *list) findNode(memMgr *MemoryManager, key string) (prevNode *DataNode, findNode *DataNode, findEl *listElement) {
-	RangeNode(memMgr.basePtr(), l.Offset, func(node *DataNode) bool {
-		el := NodeConvertTo[listElement](memMgr.basePtr(), node)
-		if el.Equals(memMgr, key) {
-			findNode = node
-			findEl = el
-			return false
-		}
-		prevNode = node
-		return true
-	})
-	return
-}
-
-// listElement 是一个keyNode + valNode组成
-type listElement struct {
-	KeyOffset uint64 // key node offset
-	ValOffset uint64 // val node offset
-}
-
-func (l *listElement) Set(memMgr *MemoryManager, key string, value []byte) error {
-	// set key
-	keyNode, err := memMgr.allocOne(uint64(len(key)))
+func (l *list) insertValue(memMgr *MemoryManager, dataNode uint64, at *listNode) (*listNode, error) {
+	lnDataNode, err := memMgr.allocOne(uint64(sizeOfLRUNode))
 	if err != nil {
-		return err
+		return nil, err
+	}
+	lruNode := NodeConvertTo[listNode](memMgr.basePtr(), lnDataNode)
+	lruNode.dataNode = dataNode
+	return l.insert(memMgr, lruNode, at), nil
+}
+
+func (l *list) remove(memMgr *MemoryManager, e *listNode) {
+	/**
+	e.prev.next = e.next
+	e.next.prev = e.prev
+	e.next = nil // avoid memory leaks
+	e.prev = nil // avoid memory leaks
+	e.list = nil
+	l.len--
+	*/
+	e.Prev(memMgr).SetNext(memMgr, e.Next(memMgr))
+	e.Next(memMgr).SetPrev(memMgr, e.Prev(memMgr))
+
+	// free listNode
+	dataNodeOffset := e.Offset(memMgr) - uint64(sizeOfDataNode)
+	memMgr.free((*DataNode)(memMgr.offset(dataNodeOffset)))
+
+	l.len--
+}
+
+func (l *list) move(memMgr *MemoryManager, e, at *listNode) {
+	/**
+	if e == at {
+		return
+	}
+	e.prev.next = e.next
+	e.next.prev = e.prev
+
+	e.prev = at
+	e.next = at.next
+	e.prev.next = e
+	e.next.prev = e
+	*/
+	if e == at {
+		return
 	}
 
-	keyNode.UpdateString(memMgr.basePtr(), key)
-
-	// set value
-	// alloc data node to set value
-	valNode, err := memMgr.allocOne(uint64(len(value)))
-	if err != nil {
-		return err
-	}
-	valNode.UpdateData(memMgr.basePtr(), value)
-
-	l.KeyOffset = keyNode.Offset(memMgr.basePtr())
-	l.ValOffset = valNode.Offset(memMgr.basePtr())
-	return nil
-}
-
-func (l *listElement) ToKey(memMgr *MemoryManager) string {
-	node := memMgr.toLinkedNode(l.KeyOffset)
-	return string(node.Data(memMgr.basePtr()))
-}
-
-func (l *listElement) Equals(memMgr *MemoryManager, key string) bool {
-	node := memMgr.toLinkedNode(l.KeyOffset)
-	if len(key) != int(node.Len) {
-		return false
-	}
-	ptr := node.DataPtr(memMgr.basePtr())
-	kh := (*reflect.StringHeader)(unsafe.Pointer(&key))
-	return memequal(unsafe.Pointer(ptr), unsafe.Pointer(kh.Data), uintptr(len(key)))
-}
-
-func (l *listElement) Free(memMgr *MemoryManager) {
-	l.FreeKey(memMgr)
-	l.FreeValue(memMgr)
-}
-
-func (l *listElement) FreeKey(memMgr *MemoryManager) {
-	keyNode := memMgr.toLinkedNode(l.KeyOffset)
-	memMgr.free(keyNode)
-}
-
-func (l *listElement) FreeValue(memMgr *MemoryManager) {
-	valNode := memMgr.toLinkedNode(l.ValOffset)
-	memMgr.free(valNode)
-}
-
-func (l *listElement) ValNode(memMgr *MemoryManager) *DataNode {
-	return memMgr.toLinkedNode(l.ValOffset)
+	e.Prev(memMgr).SetNext(memMgr, e.Next(memMgr))
+	e.Next(memMgr).SetPrev(memMgr, e.Prev(memMgr))
+	e.SetPrev(memMgr, at)
+	e.SetNext(memMgr, at.Next(memMgr))
+	e.Prev(memMgr).SetNext(memMgr, e)
+	e.Next(memMgr).SetPrev(memMgr, e)
 }

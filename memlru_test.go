@@ -22,7 +22,7 @@ func TestMemoryManager(t *testing.T) {
 		}
 	}()
 
-	memMgr, err := NewMemoryManager(mem)
+	cache, err := NewCache(mem)
 	if err != nil {
 		panic(err)
 	}
@@ -34,15 +34,12 @@ func TestMemoryManager(t *testing.T) {
 	for i := 0; i < 1024; i++ {
 		key := fmt.Sprint(i)
 		value := data
-		if err := memMgr.init(); err != nil {
-			t.Fatal("index: ", i, "err: ", err)
-		}
 		//key := fmt.Sprint(i)
-		if err := memMgr.Set(key, value); err != nil {
+		if err := cache.Set(key, value); err != nil {
 			t.Fatal("index: ", i, "err: ", err)
 		}
 
-		v, err := memMgr.Get(key)
+		v, err := cache.Get(key)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -51,11 +48,11 @@ func TestMemoryManager(t *testing.T) {
 			panic("get value not equal")
 		}
 
-		if err := memMgr.Del(key); err != nil {
+		if err := cache.Del(key); err != nil {
 			t.Fatal(err)
 		}
 
-		_, err = memMgr.Get(key)
+		_, err = cache.Get(key)
 		if !errors.Is(err, ErrNotFound) {
 			t.Fatal("expect ErrNotFound")
 		}
@@ -74,7 +71,7 @@ func TestMemoryManager_Set(t *testing.T) {
 		}
 	}()
 
-	memMgr, err := NewMemoryManager(mem)
+	cache, err := NewCache(mem)
 	if err != nil {
 		panic(err)
 	}
@@ -84,7 +81,7 @@ func TestMemoryManager_Set(t *testing.T) {
 	var counter int64
 	start := time.Now()
 	for {
-		if err := memMgr.Set(key, value); err != nil {
+		if err := cache.Set(key, value); err != nil {
 			t.Fatal(err)
 		}
 		counter++

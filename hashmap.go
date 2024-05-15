@@ -12,63 +12,47 @@ var (
 
 // HashMap fixed size HashMap
 type HashMap struct {
-	Len        uint32
-	SlotLen    uint32
-	SlotOffset uint64 // slots offset
+	len        uint32
+	slotLen    uint32
+	slotOffset uint64 // slots offset
 }
 
-func (m *HashMap) Get(memMgr *MemoryManager, key string) ([]byte, error) {
-	item, locker := m.item(memMgr, key)
-	locker.RLock()
-	defer locker.RUnlock()
-	find := item.Find(memMgr, key)
-	if find == nil {
-		return nil, ErrNotFound
+func (m *HashMap) Get(memMgr *MemoryManager, hash uint64, key string) (*HashmapSlotElement, []byte, error) {
+	item := m.slot(memMgr, hash)
+	findEl := item.Find(memMgr, key)
+	if findEl == nil {
+		return nil, nil, ErrNotFound
 	}
-	node := (*DataNode)(memMgr.offset(find.ValOffset))
-	return node.Data(memMgr.basePtr()), nil
+	node := (*DataNode)(memMgr.offset(findEl.valOffset))
+	value := node.Data(memMgr.basePtr())
+	return findEl, value, nil
 }
 
-func (m *HashMap) Set(memMgr *MemoryManager, key string, value []byte) error {
-	if len(key) > 16*KB {
-		return ErrKeyTooLarge
-	}
-
-	if len(value) > int(memMgr.MaxBlockSize()) {
-		return ErrValueTooLarge
-	}
-
-	item, locker := m.item(memMgr, key)
-	locker.Lock()
-	defer locker.Unlock()
-	exists, err := item.Set(memMgr, key, value)
+func (m *HashMap) Set(memMgr *MemoryManager, hash uint64, key string, value []byte) (exists bool, node *DataNode, err error) {
+	item := m.slot(memMgr, hash)
+	exists, node, err = item.Set(memMgr, key, value)
 	if err != nil {
-		return err
+		return
 	}
 	// if is new, hashmap total len + 1
 	if !exists {
-		m.Len++
+		m.len++
 	}
 
-	return nil
+	return
 }
 
-func (m *HashMap) Del(memMgr *MemoryManager, key string) error {
-	item, locker := m.item(memMgr, key)
-	locker.Lock()
-	defer locker.Unlock()
-	if err := item.Del(memMgr, key); err != nil {
-		return err
+func (m *HashMap) Del(memMgr *MemoryManager, hash uint64, key string) (el *HashmapSlotElement, err error) {
+	item := m.slot(memMgr, hash)
+	if el, err = item.Del(memMgr, key); err != nil {
+		return
 	}
-	m.Len--
-	return nil
+	m.len--
+	return
 }
 
-func (m *HashMap) item(memMgr *MemoryManager, key string) (*list, *Locker) {
-	hash := xxHashString(key)
-	index := uint64(hash) % uint64(m.SlotLen)
-	offset := index*uint64(sizeOfList) + m.SlotOffset
-	lockerIdx := uint64(hash) % uint64(len(memMgr.metadata.Lockers))
-	locker := &memMgr.metadata.Lockers[lockerIdx]
-	return (*list)(memMgr.offset(offset)), locker
+func (m *HashMap) slot(memMgr *MemoryManager, hash uint64) *hashmapSlot {
+	index := hash % uint64(m.slotLen)
+	offset := index*uint64(sizeOfList) + m.slotOffset
+	return (*hashmapSlot)(memMgr.offset(offset))
 }

@@ -10,6 +10,7 @@ type Locker struct {
 }
 
 func (l *Locker) Lock() {
+	// TODO lock timeout
 	for !atomic.CompareAndSwapInt32(&l.lock, 0, 1) {
 		runtime.Gosched()
 	}
