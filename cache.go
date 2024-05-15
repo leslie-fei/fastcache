@@ -2,6 +2,7 @@ package fastcache
 
 import (
 	"errors"
+	"sync"
 	"unsafe"
 )
 
@@ -170,8 +171,10 @@ func (l *lru) Len() uint64 {
 	return l.list.Len()
 }
 
-func (l *lru) locker(hash uint64) *Locker {
-	lockerIdx := hash % uint64(len(l.metadata.Lockers))
-	locker := &l.metadata.Lockers[lockerIdx]
-	return locker
+func (l *lru) locker(hash uint64) *sync.RWMutex {
+	//lockerIdx := hash % uint64(len(l.metadata.Lockers))
+	//locker := &l.metadata.Lockers[lockerIdx]
+	//return locker
+	idx := hash % uint64(len(Lockers))
+	return &Lockers[idx]
 }

@@ -1,7 +1,6 @@
 package benchmark
 
 import (
-	"net/http"
 	_ "net/http/pprof"
 	"testing"
 	"time"
@@ -11,6 +10,7 @@ import (
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/leslie-fei/fastcache"
 	"github.com/leslie-fei/fastcache/benchmark/utils"
+	"github.com/leslie-fei/fastcache/gomem"
 	"github.com/leslie-fei/fastcache/mmap"
 	"github.com/lxzan/memorycache"
 	"github.com/stretchr/testify/assert"
@@ -36,11 +36,11 @@ func init() {
 	for i := 0; i < benchcount; i++ {
 		benchkeys = append(benchkeys, string(utils.AlphabetNumeric.Generate(16)))
 	}
-	go func() {
-		if err := http.ListenAndServe(":6060", nil); err != nil {
-			panic(err)
-		}
-	}()
+	//go func() {
+	//	if err := http.ListenAndServe(":6060", nil); err != nil {
+	//		panic(err)
+	//	}
+	//}()
 }
 
 func getIndex(i int) int {
@@ -48,7 +48,8 @@ func getIndex(i int) int {
 }
 
 func BenchmarkFastCache_Set(b *testing.B) {
-	mem := mmap.NewMemory("/tmp/BenchmarkFastCache_Set", 512*fastcache.MB)
+	//mem := shm.NewMemory("/tmp/BenchmarkFastCache_Set", 6*fastcache.GB, true)
+	mem := gomem.NewMemory(6 * fastcache.GB)
 	if err := mem.Attach(); err != nil {
 		panic(err)
 	}
@@ -62,7 +63,7 @@ func BenchmarkFastCache_Set(b *testing.B) {
 		b.Fatal(err)
 	}
 	var mc = cache
-	var value = []byte("1")
+	var value = []byte{1}
 	b.RunParallel(func(pb *testing.PB) {
 		var i = 0
 		for pb.Next() {

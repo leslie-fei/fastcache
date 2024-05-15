@@ -10,20 +10,6 @@ type hashmapSlot struct {
 	offset uint64 // HashmapSlotElement linkedNode offset
 }
 
-func (l *hashmapSlot) Range(memMgr *MemoryManager, f func(el *HashmapSlotElement) bool) {
-	if l.len == 0 {
-		return
-	}
-	base := memMgr.basePtr()
-	RangeNode(base, l.offset, func(node *DataNode) bool {
-		el := NodeConvertTo[HashmapSlotElement](base, node)
-		if !f(el) {
-			return false
-		}
-		return true
-	})
-}
-
 func (l *hashmapSlot) Set(memMgr *MemoryManager, key string, value []byte) (exists bool, _ *DataNode, err error) {
 	_, findNode, findEl := l.FindNode(memMgr, key)
 	if findNode != nil {
@@ -110,16 +96,23 @@ func (l *hashmapSlot) Reset() {
 }
 
 func (l *hashmapSlot) FindNode(memMgr *MemoryManager, key string) (prevNode *DataNode, findNode *DataNode, findEl *HashmapSlotElement) {
-	RangeNode(memMgr.basePtr(), l.offset, func(node *DataNode) bool {
+	if l.len == 0 {
+		return nil, nil, nil
+	}
+
+	offset := l.offset
+	for i := 0; i < int(l.len); i++ {
+		node := ToDataNode(memMgr.basePtr(), offset)
 		el := NodeConvertTo[HashmapSlotElement](memMgr.basePtr(), node)
 		if el.Equals(memMgr, key) {
 			findNode = node
 			findEl = el
-			return false
+			return
 		}
 		prevNode = node
-		return true
-	})
+		offset = node.Next
+	}
+
 	return
 }
 
