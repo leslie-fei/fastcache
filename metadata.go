@@ -1,4 +1,4 @@
-package memlru
+package fastcache
 
 type Metadata struct {
 	GlobalLocker             Locker // 全局锁

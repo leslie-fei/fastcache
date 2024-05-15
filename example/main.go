@@ -8,8 +8,8 @@ import (
 	"os"
 	"strings"
 
-	"memlru"
-	"memlru/mmap"
+	"github.com/leslie-fei/fastcache"
+	"github.com/leslie-fei/fastcache/mmap"
 )
 
 func main() {
@@ -21,7 +21,7 @@ func main() {
 	flag.StringVar(&key, "k", "/tmp/TestSharedMemory", "attach share memory path")
 	flag.Parse()
 
-	size = size * memlru.MB
+	size = size * fastcache.MB
 
 	//mem := shm.NewMemory(key, uint64(size), true)
 	mem := mmap.NewMemory(key, uint64(size))
@@ -35,7 +35,7 @@ func main() {
 		}
 	}()
 
-	cache, err := memlru.NewCache(mem)
+	cache, err := fastcache.NewCache(mem)
 	if err != nil {
 		panic(err)
 	}
@@ -63,11 +63,11 @@ func main() {
 				continue
 			}
 			result, err := cache.Get(parts[1])
-			if err != nil && !errors.Is(err, memlru.ErrNotFound) {
+			if err != nil && !errors.Is(err, fastcache.ErrNotFound) {
 				panic(err)
 			}
 
-			if errors.Is(err, memlru.ErrNotFound) {
+			if errors.Is(err, fastcache.ErrNotFound) {
 				fmt.Println("key not found")
 				continue
 			}

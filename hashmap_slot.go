@@ -1,4 +1,4 @@
-package memlru
+package fastcache
 
 import (
 	"reflect"

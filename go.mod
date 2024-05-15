@@ -1,4 +1,4 @@
-module memlru
+module github.com/leslie-fei/fastcache
 
 go 1.21
 

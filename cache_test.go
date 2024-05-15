@@ -1,11 +1,11 @@
-package memlru
+package fastcache
 
 import (
 	"fmt"
 	"testing"
 	"time"
 
-	"memlru/mmap"
+	"github.com/leslie-fei/fastcache/mmap"
 )
 
 func TestCache(t *testing.T) {
