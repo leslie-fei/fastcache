@@ -24,7 +24,7 @@ func (l *hashmapSlot) Range(memMgr *MemoryManager, f func(el *HashmapSlotElement
 	})
 }
 
-func (l *hashmapSlot) Set(memMgr *MemoryManager, key string, value []byte) (exists bool, node *DataNode, err error) {
+func (l *hashmapSlot) Set(memMgr *MemoryManager, key string, value []byte) (exists bool, _ *DataNode, err error) {
 	_, findNode, findEl := l.FindNode(memMgr, key)
 	if findNode != nil {
 		// found
@@ -36,6 +36,7 @@ func (l *hashmapSlot) Set(memMgr *MemoryManager, key string, value []byte) (exis
 			// 释放老节点到freeList
 			findEl.FreeValue(memMgr)
 			// 申请新的数据节点
+			var node *DataNode
 			node, err = memMgr.allocOne(uint64(len(value)))
 			if err != nil {
 				return
@@ -45,27 +46,28 @@ func (l *hashmapSlot) Set(memMgr *MemoryManager, key string, value []byte) (exis
 			findEl.valOffset = valNode.Offset(memMgr.basePtr())
 		}
 		valNode.UpdateData(memMgr.basePtr(), value)
-		return true, node, nil
+		return true, findNode, nil
 	}
 	// else not find key in hashmapSlot, need alloc new node
 	// 申请一个数据块
-	node, err = memMgr.allocOne(uint64(sizeOfListElement))
+	var newNode *DataNode
+	newNode, err = memMgr.allocOne(uint64(sizeOfListElement))
 	if err != nil {
 		return
 	}
-	el := (*HashmapSlotElement)(unsafe.Pointer(node.DataPtr(memMgr.basePtr())))
+	el := (*HashmapSlotElement)(unsafe.Pointer(newNode.DataPtr(memMgr.basePtr())))
 	if err = el.Set(memMgr, key, value); err != nil {
 		return
 	}
 	// 更新list链表, 头插法
 	next := l.offset
 	// 把item的头指针指向当前的listElNode
-	l.offset = node.Offset(memMgr.basePtr())
+	l.offset = newNode.Offset(memMgr.basePtr())
 	// 更新next
-	node.Next = next
+	newNode.Next = next
 	// hashed array len + 1
 	l.len++
-	return false, node, nil
+	return false, newNode, nil
 }
 
 func (l *hashmapSlot) Del(memMgr *MemoryManager, key string) (el *HashmapSlotElement, err error) {

@@ -60,7 +60,7 @@ func TestMemoryManager(t *testing.T) {
 }
 
 func TestMemoryManager_Set(t *testing.T) {
-	mem := mmap.NewMemory("/tmp/TestMemoryManager_SetXXX", MB)
+	mem := mmap.NewMemory("/tmp/TestMemoryManager_SetXXX", 16*MB)
 	if err := mem.Attach(); err != nil {
 		panic(err)
 	}
