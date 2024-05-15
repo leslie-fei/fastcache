@@ -33,14 +33,14 @@ func (l *hashmapSlot) Set(memMgr *MemoryManager, key string, value []byte) (exis
 		// 判断是否超过原来的节点最大可以容纳的size
 		if len(value) > int(blockSize) {
 			// 如果超过需要重新分配一个node来装数据
-			// 释放老节点到freeList
-			findEl.FreeValue(memMgr)
 			// 申请新的数据节点
 			var node *DataNode
 			node, err = memMgr.allocOne(uint64(len(value)))
 			if err != nil {
 				return
 			}
+			// 释放老节点到freeList
+			findEl.FreeValue(memMgr)
 			valNode = node
 			// 重新绑定element的val data node
 			findEl.valOffset = valNode.Offset(memMgr.basePtr())
@@ -57,6 +57,8 @@ func (l *hashmapSlot) Set(memMgr *MemoryManager, key string, value []byte) (exis
 	}
 	el := (*HashmapSlotElement)(unsafe.Pointer(newNode.DataPtr(memMgr.basePtr())))
 	if err = el.Set(memMgr, key, value); err != nil {
+		// free new node alloc when error
+		memMgr.free(newNode)
 		return
 	}
 	// 更新list链表, 头插法
@@ -141,6 +143,8 @@ func (l *HashmapSlotElement) Set(memMgr *MemoryManager, key string, value []byte
 	// alloc data node to set value
 	valNode, err := memMgr.allocOne(uint64(len(value)))
 	if err != nil {
+		// free keyNode alloc when error
+		memMgr.free(keyNode)
 		return err
 	}
 	valNode.UpdateData(memMgr.basePtr(), value)

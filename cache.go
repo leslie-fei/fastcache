@@ -43,7 +43,7 @@ func NewCache(mem Memory) (Cache, error) {
 	metadata := (*Metadata)(mem.Ptr())
 	metadata.GlobalLocker.Lock()
 	defer metadata.GlobalLocker.Unlock()
-	memMgr := NewMemoryManager(mem, metadata)
+	memMgr := newMemoryManager(mem, metadata)
 	// if magic not equals or memory data size changed should init memory
 	needInit := metadata.Magic != magic || metadata.TotalSize != mem.Size()
 	if needInit {
@@ -138,7 +138,8 @@ func (l *lru) Set(key string, value []byte) error {
 		// alloc new lruNode
 		newLruNode, err := l.list.PushFront(l.memMgr, node.Offset(l.memMgr.basePtr()))
 		if err != nil {
-			// TODO rollback set
+			// rollback hashmap set
+			_, _ = l.hashMap.Del(l.memMgr, hash, key)
 			return err
 		}
 		// hashmap element are associated with lruNode

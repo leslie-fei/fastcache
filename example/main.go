@@ -35,7 +35,7 @@ func main() {
 		}
 	}()
 
-	memMgr, err := memlru.NewMemoryManager(mem)
+	cache, err := memlru.NewCache(mem)
 	if err != nil {
 		panic(err)
 	}
@@ -55,14 +55,14 @@ func main() {
 				fmt.Println("Usage: set <key> <value>")
 				continue
 			}
-			memMgr.Set(parts[1], []byte(parts[2]))
+			cache.Set(parts[1], []byte(parts[2]))
 			fmt.Println("Set completed.")
 		case "get":
 			if len(parts) != 2 {
 				fmt.Println("Usage: get <key>")
 				continue
 			}
-			result, err := memMgr.Get(parts[1])
+			result, err := cache.Get(parts[1])
 			if err != nil && !errors.Is(err, memlru.ErrNotFound) {
 				panic(err)
 			}
@@ -78,7 +78,7 @@ func main() {
 				fmt.Println("Usage: del <key>")
 				continue
 			}
-			if err := memMgr.Del(parts[1]); err != nil {
+			if err := cache.Del(parts[1]); err != nil {
 				fmt.Println("delete error: ", err)
 				continue
 			}

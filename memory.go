@@ -34,7 +34,7 @@ type Memory interface {
 	Travel(skipOffset uint64, fn func(ptr unsafe.Pointer, size uint64) uint64)
 }
 
-func NewMemoryManager(mem Memory, metadata *Metadata) *MemoryManager {
+func newMemoryManager(mem Memory, metadata *Metadata) *MemoryManager {
 	memMgr := &MemoryManager{
 		mem:      mem,
 		metadata: metadata,
