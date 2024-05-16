@@ -10,8 +10,8 @@ import (
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/leslie-fei/fastcache"
 	"github.com/leslie-fei/fastcache/benchmark/utils"
-	"github.com/leslie-fei/fastcache/gomem"
 	"github.com/leslie-fei/fastcache/mmap"
+	"github.com/leslie-fei/fastcache/shm"
 	"github.com/lxzan/memorycache"
 	"github.com/stretchr/testify/assert"
 )
@@ -48,8 +48,8 @@ func getIndex(i int) int {
 }
 
 func BenchmarkFastCache_Set(b *testing.B) {
-	//mem := shm.NewMemory("/tmp/BenchmarkFastCache_Set", 6*fastcache.GB, true)
-	mem := gomem.NewMemory(6 * fastcache.GB)
+	mem := shm.NewMemory("/tmp/BenchmarkFastCache_Set", fastcache.GB, true)
+	//mem := gomem.NewMemory(fastcache.GB)
 	if err := mem.Attach(); err != nil {
 		panic(err)
 	}
@@ -75,7 +75,7 @@ func BenchmarkFastCache_Set(b *testing.B) {
 }
 
 func BenchmarkFastCache_Get(b *testing.B) {
-	mem := mmap.NewMemory("/tmp/BenchmarkFastCache_Get", 512*fastcache.MB)
+	mem := shm.NewMemory("/tmp/BenchmarkFastCache_Get", fastcache.GB, true)
 	if err := mem.Attach(); err != nil {
 		panic(err)
 	}

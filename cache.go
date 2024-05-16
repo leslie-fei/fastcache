@@ -13,7 +13,7 @@ var (
 
 const (
 	magic                 uint64 = 9259259527
-	PageSize                     = 16 * KB
+	PageSize                     = 64 * KB
 	perHashmapSlotLength         = 100
 	perHashmapElementSize        = 128
 )
@@ -91,8 +91,8 @@ type lru struct {
 func (l *lru) Get(key string) ([]byte, error) {
 	hash := xxHashString(key)
 	locker := l.locker(hash)
-	locker.RLock()
-	defer locker.RUnlock()
+	locker.Lock()
+	defer locker.Unlock()
 	el, value, err := l.hashMap.Get(l.memMgr, hash, key)
 	if err != nil {
 		return nil, err
@@ -106,8 +106,8 @@ func (l *lru) Get(key string) ([]byte, error) {
 func (l *lru) Peek(key string) ([]byte, error) {
 	hash := xxHashString(key)
 	locker := l.locker(hash)
-	locker.RLock()
-	defer locker.RUnlock()
+	locker.Lock()
+	defer locker.Unlock()
 	_, value, err := l.hashMap.Get(l.memMgr, hash, key)
 	return value, err
 }
@@ -171,7 +171,7 @@ func (l *lru) Len() uint64 {
 	return l.list.Len()
 }
 
-func (l *lru) locker(hash uint64) *sync.RWMutex {
+func (l *lru) locker(hash uint64) *sync.Mutex {
 	//lockerIdx := hash % uint64(len(l.metadata.Lockers))
 	//locker := &l.metadata.Lockers[lockerIdx]
 	//return locker

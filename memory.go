@@ -63,8 +63,9 @@ func (m *MemoryManager) MaxBlockSize() uint64 {
 }
 
 func (m *MemoryManager) calHashmapSlots() uint64 {
-	listSize := perHashmapSlotLength * perHashmapElementSize
-	return m.mem.Size()/uint64(listSize) + 1
+	return 1024 * 1024
+	//listSize := perHashmapSlotLength * perHashmapElementSize
+	//return m.mem.Size()/uint64(listSize) + 1
 }
 
 func (m *MemoryManager) offset(offset uint64) unsafe.Pointer {

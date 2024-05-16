@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 )
 
-var Lockers = make([]sync.RWMutex, 192)
+var Lockers = make([]sync.Mutex, 1024*1024)
 
 type Locker struct {
 	lock int32
