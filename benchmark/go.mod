@@ -19,6 +19,7 @@ require (
 	github.com/dolthub/maphash v0.1.0 // indirect
 	github.com/dolthub/swiss v0.2.1 // indirect
 	github.com/dustin/go-humanize v1.0.0 // indirect
+	github.com/edsrzf/mmap-go v1.1.0 // indirect
 	github.com/gammazero/deque v0.2.1 // indirect
 	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b // indirect
 	github.com/klauspost/cpuid/v2 v2.2.6 // indirect
@@ -32,6 +33,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace (
-	github.com/leslie-fei/fastcache v0.0.0-20240515083218-aa5c6353801b => ../
-)
+replace github.com/leslie-fei/fastcache v0.0.0-20240515083218-aa5c6353801b => ../

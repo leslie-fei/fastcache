@@ -6,14 +6,14 @@ import (
 	"reflect"
 	"unsafe"
 
-	"golang.org/x/sys/unix"
+	"github.com/edsrzf/mmap-go"
 )
 
 type Memory struct {
 	filepath string
 	bytes    uint64
 	file     *os.File
-	mmap     []byte
+	mmap     mmap.MMap
 	basep    unsafe.Pointer
 }
 
@@ -22,7 +22,7 @@ func NewMemory(filepath string, bytes uint64) *Memory {
 }
 
 func (m *Memory) Attach() (err error) {
-	if m.file == nil {
+	if nil == m.file {
 		if m.file, err = os.OpenFile(m.filepath, os.O_RDWR|os.O_CREATE, 0666); nil != err {
 			return err
 		}
@@ -33,8 +33,7 @@ func (m *Memory) Attach() (err error) {
 			return err
 		}
 
-		m.mmap, err = unix.Mmap(int(m.file.Fd()), 0, int(m.bytes), unix.PROT_READ|unix.PROT_WRITE, unix.MAP_SHARED)
-		if err != nil {
+		if m.mmap, err = mmap.Map(m.file, mmap.RDWR, 0); nil != err {
 			m.file.Close()
 			m.file = nil
 			return err
@@ -43,22 +42,24 @@ func (m *Memory) Attach() (err error) {
 		sh := (*reflect.SliceHeader)(unsafe.Pointer(&m.mmap))
 		m.basep = unsafe.Pointer(sh.Data)
 	}
-
 	return
 }
 
 func (m *Memory) Detach() error {
-	if m.mmap != nil {
-		if err := unix.Munmap(m.mmap); err != nil {
+	if nil != m.mmap {
+		if err := m.mmap.Unmap(); nil != err {
 			return err
 		}
-	}
-
-	if m.file != nil {
-		_ = m.file.Close()
+		m.mmap = nil
 		m.basep = unsafe.Pointer(nil)
 	}
 
+	if nil != m.file {
+		if err := m.file.Close(); nil != err {
+			return err
+		}
+		m.file = nil
+	}
 	return nil
 }
 
