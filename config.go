@@ -1,5 +1,7 @@
 package fastcache
 
+import "runtime"
+
 type MemoryType int
 
 const (
@@ -22,6 +24,6 @@ type Config struct {
 func DefaultConfig() *Config {
 	return &Config{
 		MemoryType: GO,
-		Shards:     64,
+		Shards:     uint32(runtime.NumCPU()),
 	}
 }

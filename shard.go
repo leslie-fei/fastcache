@@ -153,11 +153,11 @@ func (s *shard) allocOne(dataSize uint64) (*DataNode, error) {
 	if err != nil {
 		if errors.Is(err, ErrNoSpace) {
 			// 触发淘汰
-			if err = s.bigContainer.Evict(s.globalAllocator, dataSize); err != nil {
+			if err = container.Evict(s.globalAllocator, dataSize); err != nil {
 				return nil, err
 			}
 			// 因为已经触发过淘汰, 这里一定能拿到数据块
-			node, err = s.bigContainer.Alloc(s.globalAllocator, dataSize)
+			node, err = container.Alloc(s.globalAllocator, dataSize)
 			return node, err
 		}
 		return nil, err

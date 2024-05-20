@@ -10,16 +10,15 @@ import (
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/leslie-fei/fastcache"
 	"github.com/leslie-fei/fastcache/benchmark/utils"
-	"github.com/leslie-fei/fastcache/mmap"
-	"github.com/leslie-fei/fastcache/shm"
 	"github.com/lxzan/memorycache"
 	"github.com/stretchr/testify/assert"
 )
 
 const (
-	sharding   = 128
-	capacity   = 100
-	benchcount = 1 << 20
+	sharding = 128
+	capacity = 100
+	//benchcount = 1 << 20
+	benchcount = 1 << 10
 )
 
 var (
@@ -48,17 +47,7 @@ func getIndex(i int) int {
 }
 
 func BenchmarkFastCache_Set(b *testing.B) {
-	mem := shm.NewMemory("/tmp/BenchmarkFastCache_Set", fastcache.GB, true)
-	//mem := gomem.NewMemory(fastcache.GB)
-	if err := mem.Attach(); err != nil {
-		panic(err)
-	}
-	defer func() {
-		if err := mem.Detach(); err != nil {
-			panic(err)
-		}
-	}()
-	cache, err := fastcache.NewCache(mem)
+	cache, err := fastcache.NewCache(fastcache.GB, nil)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -77,16 +66,7 @@ func BenchmarkFastCache_Set(b *testing.B) {
 }
 
 func BenchmarkFastCache_Get(b *testing.B) {
-	mem := shm.NewMemory("/tmp/BenchmarkFastCache_Get", fastcache.GB, true)
-	if err := mem.Attach(); err != nil {
-		panic(err)
-	}
-	defer func() {
-		if err := mem.Detach(); err != nil {
-			panic(err)
-		}
-	}()
-	cache, err := fastcache.NewCache(mem)
+	cache, err := fastcache.NewCache(fastcache.GB, nil)
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -109,16 +89,7 @@ func BenchmarkFastCache_Get(b *testing.B) {
 }
 
 func BenchmarkFastCache_SetAndGet(b *testing.B) {
-	mem := mmap.NewMemory("/tmp/BenchmarkFastCache_SetAndGet", 512*fastcache.MB)
-	if err := mem.Attach(); err != nil {
-		panic(err)
-	}
-	defer func() {
-		if err := mem.Detach(); err != nil {
-			panic(err)
-		}
-	}()
-	cache, err := fastcache.NewCache(mem)
+	cache, err := fastcache.NewCache(fastcache.GB, nil)
 	if err != nil {
 		b.Fatal(err)
 	}
