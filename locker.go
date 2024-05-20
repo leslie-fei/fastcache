@@ -6,34 +6,76 @@ import (
 	"sync/atomic"
 )
 
-var Lockers = make([]sync.Mutex, 1024*1024)
-
-type Locker struct {
-	lock int32
+type Locker interface {
+	sync.Locker
+	RLock()
+	RUnlock()
+	Reset()
 }
 
-func (l *Locker) Lock() {
+type threadLocker struct {
+	sync.RWMutex
+}
+
+//func (l *threadLocker) Lock() {
+//
+//}
+//
+//func (l *threadLocker) Unlock() {
+//}
+
+func (l *threadLocker) Reset() {
+	// ignore
+}
+
+type processLocker struct {
+	write    *int32
+	read     *int32
+	filepath string // file lock
+}
+
+func (l *processLocker) Lock() {
 	// TODO lock timeout
-	for !atomic.CompareAndSwapInt32(&l.lock, 0, 1) {
+	for !atomic.CompareAndSwapInt32(l.write, 0, 1) {
 		runtime.Gosched()
 	}
 }
 
-func (l *Locker) Unlock() {
-	if !atomic.CompareAndSwapInt32(&l.lock, 1, 0) {
+func (l *processLocker) Unlock() {
+	if !atomic.CompareAndSwapInt32(l.write, 1, 0) {
 		panic("unlock an unlocked-lock")
 	}
 }
 
-func (l *Locker) RLock() {
+func (l *processLocker) RLock() {
 	// TODO read lock
 	l.Lock()
 }
 
-func (l *Locker) RUnlock() {
+func (l *processLocker) RUnlock() {
 	l.Unlock()
 }
 
-func (l *Locker) Reset() {
-	l.lock = 0
+func (l *processLocker) Reset() {
+	*l.write = 0
+}
+
+var nopLocker = &nonLocker{}
+
+type nonLocker struct {
+}
+
+func (n *nonLocker) Lock() {
+}
+
+func (n *nonLocker) Unlock() {
+}
+
+func (n *nonLocker) RLock() {
+}
+
+func (n *nonLocker) RUnlock() {
+}
+
+func (n *nonLocker) Reset() {
 }

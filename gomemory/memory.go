@@ -1,4 +1,4 @@
-package gomem
+package gomemory
 
 import (
 	"fmt"
@@ -19,6 +19,7 @@ func NewMemory(bytes uint64) *Memory {
 
 func (m *Memory) Attach() error {
 	if nil == m.basep {
+		m.mem[0] = 0
 		bh := (*reflect.SliceHeader)(unsafe.Pointer(&m.mem))
 		m.basep = unsafe.Pointer(bh.Data)
 	}
@@ -28,6 +29,7 @@ func (m *Memory) Attach() error {
 func (m *Memory) Detach() error {
 	if nil != m.basep {
 		m.basep = unsafe.Pointer(nil)
+		m.mem = nil
 	}
 	return nil
 }

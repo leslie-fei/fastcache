@@ -3,54 +3,161 @@ package fastcache
 import (
 	"errors"
 	"math"
+	"unsafe"
 )
 
-var ErrIndexOutOfRange = errors.New("index out of range")
+var (
+	ErrIndexOutOfRange = errors.New("index out of range")
+	ErrLRUListEmpty    = errors.New("LRU list is empty")
+)
 
-type BlockFreeContainer struct {
-	FreeLists [25]BlockFreeList
+const FreeListLen = 25 // 1 2 4 8 ... 16M, max free DataNode size = 16M
+var SmallFreeListIndex = dataSizeToIndex(64 * KB)
+
+type lruAndFreeContainer struct {
+	freeLists [FreeListLen]blockFreeList
+	lruLists  [FreeListLen]list
 }
 
-func (b *BlockFreeContainer) Init() {
+func (b *lruAndFreeContainer) Init(base uintptr) {
 	size := 1
-	for i := 0; i < len(b.FreeLists); i++ {
-		freeList := &b.FreeLists[i]
+	for i := 0; i < len(b.freeLists); i++ {
+		freeList := &b.freeLists[i]
 		freeList.Size = uint64(size)
 		freeList.Index = uint8(i)
+
+		lruList := &b.lruLists[i]
+		lruList.Init(base)
+
 		size *= 2
 	}
 }
 
-func (b *BlockFreeContainer) Get(dataSize uint64) (*BlockFreeList, error) {
+func (b *lruAndFreeContainer) Get(dataSize uint64) (*blockFreeList, error) {
 	if dataSize == 0 {
 		return nil, errors.New("data size is zero")
 	}
-	v := math.Log2(float64(dataSize))
-	idx := int(math.Ceil(v))
-	if idx > len(b.FreeLists)-1 {
+
+	idx := dataSizeToIndex(dataSize)
+	if idx > len(b.freeLists)-1 {
 		return nil, ErrIndexOutOfRange
 	}
-	return &b.FreeLists[idx], nil
+
+	return &b.freeLists[idx], nil
 }
 
-func (b *BlockFreeContainer) GetIndex(idx uint8) *BlockFreeList {
-	return &b.FreeLists[idx]
+func (b *lruAndFreeContainer) GetIndex(idx uint8) *blockFreeList {
+	return &b.freeLists[idx]
 }
 
-func (b *BlockFreeContainer) MaxSize() uint64 {
-	return b.FreeLists[len(b.FreeLists)-1].Size
+func (b *lruAndFreeContainer) MaxSize() uint64 {
+	return b.freeLists[len(b.freeLists)-1].Size
 }
 
-type BlockFreeList struct {
+func (b *lruAndFreeContainer) Len() int {
+	return len(b.freeLists)
+}
+
+func (b *lruAndFreeContainer) Alloc(allocator Allocator, dataSize uint64) (*DataNode, error) {
+	freeList, err := b.Get(dataSize)
+	if err != nil {
+		return nil, err
+	}
+
+	// 一个节点需要的字节数等于链表头长度+定长数据长度
+	fixedSize := freeList.Size
+	nodeSize := uint64(sizeOfDataNode) + fixedSize
+
+	if freeList.Len == 0 {
+		// if alloc size less than PageSize will alloc PageSize, other alloc nodeSize
+		allocSize := uint64(PageSize)
+		if nodeSize > PageSize {
+			allocSize = nodeSize
+		}
+		_, offset, err := allocator.Alloc(allocSize)
+		if err != nil {
+			return nil, err
+		}
+		// 设置第一个链表节点的offset
+		nodeLen := allocSize / nodeSize
+		head := freeList.First(allocator.Base())
+		// 头插法
+		for i := 0; i < int(nodeLen); i++ {
+			ptr := unsafe.Pointer(allocator.Base() + uintptr(offset))
+			node := (*DataNode)(ptr)
+			node.Reset()
+			// 填写数据的指针位置
+			node.FreeBlockIndex = freeList.Index
+			if head == nil {
+				head = node
+			} else {
+				// 头插, 把当前的head, 前面插入node节点
+				next := head
+				node.Next = next.Offset(allocator.Base())
+				head = node
+			}
+			offset += nodeSize
+		}
+		freeList.Len += uint32(nodeLen)
+		if head != nil {
+			freeList.Head = head.Offset(allocator.Base())
+		}
+	}
+
+	// 把第一个链表节点取出
+	node := freeList.First(allocator.Base())
+	freeList.Head = node.Next
+	freeList.Len--
+	// 断开与这个链表的关联, 变成一个独立的node
+	node.Next = 0
+
+	return node, nil
+}
+
+func (b *lruAndFreeContainer) MoveToFront(base uintptr, node *DataNode, lruNode *listNode) {
+	lruList := &b.lruLists[node.FreeBlockIndex]
+	lruList.MoveToFront(base, lruNode)
+}
+
+func (b *lruAndFreeContainer) Free(base uintptr, node *DataNode, lruNode *listNode) {
+	// remove LRU list
+	lruList := &b.lruLists[node.FreeBlockIndex]
+	lruList.Remove(base, lruNode)
+
+	// insert to free list
+	freeList := b.GetIndex(node.FreeBlockIndex)
+	node.Reset()
+	next := freeList.Head
+	node.Next = next
+	freeList.Head = uint64(uintptr(unsafe.Pointer(node)) - base)
+}
+
+func (b *lruAndFreeContainer) Evict(allocator *globalAllocator, size uint64) error {
+	index := dataSizeToIndex(size)
+	lruList := &b.lruLists[index]
+	if lruList.Len() == 0 {
+		return ErrLRUListEmpty
+	}
+	oldest := lruList.Back(allocator.Base())
+	lruList.Remove(allocator.Base(), oldest)
+	return nil
+}
+
+type blockFreeList struct {
 	Head  uint64 // head of data DataNode
 	Len   uint32 // data len
 	Size  uint64 // block bytes size
 	Index uint8
 }
 
-func (bl *BlockFreeList) First(mem *MemoryManager) *DataNode {
+func (bl *blockFreeList) First(base uintptr) *DataNode {
 	if bl.Len == 0 {
 		return nil
 	}
-	return (*DataNode)(mem.offset(bl.Head))
+	return (*DataNode)(unsafe.Pointer(base + uintptr(bl.Head)))
+}
+
+func dataSizeToIndex(size uint64) int {
+	v := math.Log2(float64(size))
+	return int(math.Ceil(v))
 }

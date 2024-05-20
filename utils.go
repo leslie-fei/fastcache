@@ -2,9 +2,10 @@ package fastcache
 
 import "unsafe"
 
-// NodeConvertTo node data convert to *T
-func NodeConvertTo[T any](base uintptr, node *DataNode) *T {
-	return (*T)(unsafe.Pointer(node.DataPtr(base)))
+// NodeTo node data convert to *T
+func NodeTo[T any](node *DataNode) *T {
+	dataPtr := uintptr(unsafe.Pointer(node)) + sizeOfDataNode
+	return (*T)(unsafe.Pointer(dataPtr))
 }
 
 func RangeNode(base uintptr, offset uint64, f func(node *DataNode) bool) {

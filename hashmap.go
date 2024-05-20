@@ -2,6 +2,7 @@ package fastcache
 
 import (
 	"errors"
+	"unsafe"
 )
 
 var (
@@ -10,49 +11,46 @@ var (
 	ErrKeyTooLarge   = errors.New("key too large")
 )
 
-// HashMap fixed size HashMap
-type HashMap struct {
-	len        uint32
-	slotLen    uint32
-	slotOffset uint64 // slots offset
+// hashMap fixed size of hashmap
+type hashMap struct {
+	len       uint32
+	bucketLen uint32
 }
 
-func (m *HashMap) Get(memMgr *MemoryManager, hash uint64, key string) (*HashmapSlotElement, []byte, error) {
-	item := m.slot(memMgr, hash)
-	findEl := item.Find(memMgr, key)
+func (m *hashMap) Get(base uintptr, hash uint64, key string) (*DataNode, []byte, error) {
+	item := m.bucket(base, hash)
+	_, findNode, findEl := item.FindNode(base, key)
 	if findEl == nil {
 		return nil, nil, ErrNotFound
 	}
-	node := (*DataNode)(memMgr.offset(findEl.valOffset))
-	value := node.Data(memMgr.basePtr())
-	return findEl, value, nil
+	value := findEl.Value()
+	return findNode, value, nil
 }
 
-func (m *HashMap) Set(memMgr *MemoryManager, hash uint64, key string, value []byte) (exists bool, node *DataNode, err error) {
-	item := m.slot(memMgr, hash)
-	exists, node, err = item.Set(memMgr, key, value)
-	if err != nil {
-		return
-	}
-	// if is new, hashmap total len + 1
-	if !exists {
-		m.len++
-	}
-
-	return
+func (m *hashMap) Add(base uintptr, hash uint64, node *DataNode) {
+	item := m.bucket(base, hash)
+	// 更新list链表, 头插法
+	item.Add(base, node)
+	m.len++
 }
 
-func (m *HashMap) Del(memMgr *MemoryManager, hash uint64, key string) (el *HashmapSlotElement, err error) {
-	item := m.slot(memMgr, hash)
-	if el, err = item.Del(memMgr, key); err != nil {
+func (m *hashMap) Del(base uintptr, hash uint64, prev *DataNode, node *DataNode) (err error) {
+	item := m.bucket(base, hash)
+	if err = item.Del(prev, node); err != nil {
 		return
 	}
 	m.len--
 	return
 }
 
-func (m *HashMap) slot(memMgr *MemoryManager, hash uint64) *hashmapSlot {
-	index := hash % uint64(m.slotLen)
-	offset := index*uint64(sizeOfList) + m.slotOffset
-	return (*hashmapSlot)(memMgr.offset(offset))
+func (m *hashMap) FindNode(base uintptr, hash uint64, key string) (prevNode *DataNode, findNode *DataNode, findEl *hashMapBucketElement) {
+	item := m.bucket(base, hash)
+	return item.FindNode(base, key)
+}
+
+func (m *hashMap) bucket(base uintptr, hash uint64) *hashMapBucket {
+	index := hash % uint64(m.bucketLen)
+	headPtr := uintptr(unsafe.Pointer(m)) + sizeOfHashmap
+	bucketPtr := uintptr(index*uint64(sizeOfHashmapBucket)) + headPtr
+	return (*hashMapBucket)(unsafe.Pointer(bucketPtr))
 }

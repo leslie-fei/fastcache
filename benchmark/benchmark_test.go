@@ -18,7 +18,7 @@ import (
 
 const (
 	sharding   = 128
-	capacity   = 10000
+	capacity   = 100
 	benchcount = 1 << 20
 )
 
@@ -64,6 +64,8 @@ func BenchmarkFastCache_Set(b *testing.B) {
 	}
 	var mc = cache
 	var value = []byte{1}
+	b.ResetTimer()
+	b.ReportAllocs()
 	b.RunParallel(func(pb *testing.PB) {
 		var i = 0
 		for pb.Next() {
@@ -95,6 +97,7 @@ func BenchmarkFastCache_Get(b *testing.B) {
 	}
 
 	b.ResetTimer()
+	b.ReportAllocs()
 	b.RunParallel(func(pb *testing.PB) {
 		var i = 0
 		for pb.Next() {
@@ -140,62 +143,14 @@ func BenchmarkFastCache_SetAndGet(b *testing.B) {
 	})
 }
 
-func BenchmarkMemoryCache_Set(b *testing.B) {
-	var mc = memorycache.New[string, int](options...)
-	b.RunParallel(func(pb *testing.PB) {
-		var i = 0
-		for pb.Next() {
-			index := getIndex(i)
-			i++
-			mc.Set(benchkeys[index], 1, time.Hour)
-		}
-	})
-}
-
-func BenchmarkMemoryCache_Get(b *testing.B) {
-	var mc = memorycache.New[string, int](options...)
-	for i := 0; i < benchcount; i++ {
-		mc.Set(benchkeys[i%benchcount], 1, time.Hour)
-	}
-
-	b.ResetTimer()
-	b.RunParallel(func(pb *testing.PB) {
-		var i = 0
-		for pb.Next() {
-			index := getIndex(i)
-			i++
-			mc.Get(benchkeys[index])
-		}
-	})
-}
-
-func BenchmarkMemoryCache_SetAndGet(b *testing.B) {
-	var mc = memorycache.New[string, int](options...)
-	for i := 0; i < benchcount; i++ {
-		mc.Set(benchkeys[i%benchcount], 1, time.Hour)
-	}
-
-	b.ResetTimer()
-	b.RunParallel(func(pb *testing.PB) {
-		var i = 0
-		for pb.Next() {
-			index := getIndex(i)
-			i++
-			if index&7 == 0 {
-				mc.Set(benchkeys[index], 1, time.Hour)
-			} else {
-				mc.Get(benchkeys[index])
-			}
-		}
-	})
-}
-
 func BenchmarkRistretto_Set(b *testing.B) {
 	var mc, _ = ristretto.NewCache(&ristretto.Config{
 		NumCounters: capacity * sharding * 10, // number of keys to track frequency of (10M).
 		MaxCost:     1 << 30,                  // maximum cost of cache (1GB).
 		BufferItems: 64,                       // number of keys per Get buffer.
 	})
+	b.ResetTimer()
+	b.ReportAllocs()
 	b.RunParallel(func(pb *testing.PB) {
 		var i = 0
 		for pb.Next() {
@@ -204,6 +159,18 @@ func BenchmarkRistretto_Set(b *testing.B) {
 			mc.SetWithTTL(benchkeys[index], 1, 1, time.Hour)
 		}
 	})
+}
+
+func TestBenchmarkTemp(t *testing.T) {
+	var mc, _ = ristretto.NewCache(&ristretto.Config{
+		NumCounters: capacity * sharding * 10, // number of keys to track frequency of (10M).
+		MaxCost:     1 << 30,                  // maximum cost of cache (1GB).
+		BufferItems: 64,                       // number of keys per Get buffer.
+	})
+
+	ok := mc.SetWithTTL("1", 1, 1, time.Hour)
+	v, exists := mc.Get("1")
+	t.Log("set ok: ", ok, " get value: ", v, " exists: ", exists)
 }
 
 func BenchmarkRistretto_Get(b *testing.B) {
@@ -217,6 +184,7 @@ func BenchmarkRistretto_Get(b *testing.B) {
 	}
 
 	b.ResetTimer()
+	b.ReportAllocs()
 	b.RunParallel(func(pb *testing.PB) {
 		var i = 0
 		for pb.Next() {
@@ -335,4 +303,13 @@ func TestLRU_Impl(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		f()
 	}
+}
+
+func BenchmarkEmpty(b *testing.B) {
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			i++
+		}
+	})
 }
