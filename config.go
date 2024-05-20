@@ -24,6 +24,6 @@ type Config struct {
 func DefaultConfig() *Config {
 	return &Config{
 		MemoryType: GO,
-		Shards:     uint32(runtime.NumCPU()),
+		Shards:     uint32(runtime.NumCPU() * 4),
 	}
 }
