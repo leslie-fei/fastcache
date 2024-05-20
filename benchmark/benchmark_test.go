@@ -47,7 +47,9 @@ func getIndex(i int) int {
 }
 
 func BenchmarkFastCache_Set(b *testing.B) {
-	cache, err := fastcache.NewCache(fastcache.GB, nil)
+	cache, err := fastcache.NewCache(fastcache.GB, &fastcache.Config{
+		Shards: sharding,
+	})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -66,7 +68,9 @@ func BenchmarkFastCache_Set(b *testing.B) {
 }
 
 func BenchmarkFastCache_Get(b *testing.B) {
-	cache, err := fastcache.NewCache(fastcache.GB, nil)
+	cache, err := fastcache.NewCache(fastcache.GB, &fastcache.Config{
+		Shards: sharding,
+	})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -89,7 +93,9 @@ func BenchmarkFastCache_Get(b *testing.B) {
 }
 
 func BenchmarkFastCache_SetAndGet(b *testing.B) {
-	cache, err := fastcache.NewCache(fastcache.GB, nil)
+	cache, err := fastcache.NewCache(fastcache.GB, &fastcache.Config{
+		Shards: sharding,
+	})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -100,6 +106,7 @@ func BenchmarkFastCache_SetAndGet(b *testing.B) {
 	}
 
 	b.ResetTimer()
+	b.ReportAllocs()
 	b.RunParallel(func(pb *testing.PB) {
 		var i = 0
 		for pb.Next() {
@@ -177,6 +184,7 @@ func BenchmarkRistretto_SetAndGet(b *testing.B) {
 	}
 
 	b.ResetTimer()
+	b.ReportAllocs()
 	b.RunParallel(func(pb *testing.PB) {
 		var i = 0
 		for pb.Next() {
@@ -193,6 +201,8 @@ func BenchmarkRistretto_SetAndGet(b *testing.B) {
 
 func BenchmarkTheine_Set(b *testing.B) {
 	mc, _ := theine.NewBuilder[string, int](sharding * capacity).Build()
+	b.ResetTimer()
+	b.ReportAllocs()
 	b.RunParallel(func(pb *testing.PB) {
 		i := 0
 		for pb.Next() {
@@ -210,6 +220,7 @@ func BenchmarkTheine_Get(b *testing.B) {
 	}
 
 	b.ResetTimer()
+	b.ReportAllocs()
 	b.RunParallel(func(pb *testing.PB) {
 		i := 0
 		for pb.Next() {
@@ -227,6 +238,7 @@ func BenchmarkTheine_SetAndGet(b *testing.B) {
 	}
 
 	b.ResetTimer()
+	b.ReportAllocs()
 	b.RunParallel(func(pb *testing.PB) {
 		i := 0
 		for pb.Next() {
