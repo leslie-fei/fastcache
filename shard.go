@@ -9,6 +9,7 @@ import (
 type shardProxy struct {
 	shard    *shard // 多个
 	bigShard *shard // 全局
+	bigIndex int
 }
 
 func (s *shardProxy) Set(hash uint64, key string, value []byte) error {
@@ -16,7 +17,7 @@ func (s *shardProxy) Set(hash uint64, key string, value []byte) error {
 	locker.Lock()
 
 	dataIndex := dataSizeToIndex(hashmapElementSize(key, value))
-	isBig := dataIndex > SmallFreeListIndex
+	isBig := dataIndex > s.bigIndex
 	prev, node, el := s.shard.FindNode(hash, key)
 	exists := node != nil
 	// 如果set的数据在小分片中存在, 并且新的value数据已经过大是大数据块, 需要把shard中的删除
@@ -87,6 +88,20 @@ func (s *shardProxy) Del(hash uint64, key string) error {
 		return s.bigShard.Del(hash, key)
 	}
 	return err
+}
+
+type shardType struct {
+	Allocator       shardAllocatorType
+	LockerOffset    uint64
+	HashMapOffset   uint64
+	ContainerOffset uint64
+	Size            uint32
+}
+
+type bigShardType struct {
+	HashMapOffset   uint64
+	ContainerOffset uint64
+	Size            uint32
 }
 
 type shard struct {

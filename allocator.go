@@ -43,6 +43,10 @@ func (g *globalAllocator) Locker() Locker {
 	return g.metadata.GlobalLocker
 }
 
+func (g *globalAllocator) Offset() uint64 {
+	return g.metadata.Used
+}
+
 type shardMemory struct {
 	offset uint64
 	size   uint64
@@ -61,12 +65,16 @@ func (s *shardMemory) FreeMemory() uint64 {
 	return s.size - s.used
 }
 
-// shardAllocator 归属于shard的内存分配, 他们都先从 globalAllocator 中分配出内存, 给shard独享
-type shardAllocator struct {
-	global         *globalAllocator
+type shardAllocatorType struct {
 	first          uint64
 	shardMemoryLen uint32
 	growSize       uint64
+}
+
+// shardAllocator 归属于shard的内存分配, 他们都先从 globalAllocator 中分配出内存, 给shard独享
+type shardAllocator struct {
+	global *globalAllocator
+	*shardAllocatorType
 }
 
 func (s *shardAllocator) Alloc(size uint64) (ptr unsafe.Pointer, offset uint64, err error) {

@@ -16,14 +16,24 @@ type Config struct {
 	// shard memory key
 	MemoryKey string
 	// max element length in cache when set value over the length will evict oldest
-	MaxElementLength uint64
+	MaxElementLen uint32
+	// big data max length
+	BigDataLen uint32
+	// large data size block
+	BigDataSize       uint32
+	ShardPerAllocSize uint64
 	// number of shards
 	Shards uint32
 }
 
 func DefaultConfig() *Config {
-	return &Config{
-		MemoryType: GO,
-		Shards:     uint32(runtime.NumCPU() * 4),
+	var defaultConfig = &Config{
+		MemoryType:        GO,
+		Shards:            uint32(runtime.NumCPU() * 4),
+		BigDataLen:        4096,
+		BigDataSize:       16 * KB,
+		ShardPerAllocSize: 1 * MB,
+		MaxElementLen:     100_000,
 	}
+	return defaultConfig
 }

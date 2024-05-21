@@ -29,9 +29,8 @@ func (l *threadLocker) Reset() {
 }
 
 type processLocker struct {
-	write    *int32
-	read     *int32
-	filepath string // file lock
+	write *int32
+	read  *int32
 }
 
 func (l *processLocker) Lock() {

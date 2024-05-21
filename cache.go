@@ -3,6 +3,7 @@ package fastcache
 import (
 	"errors"
 	"fmt"
+	"math"
 	"unsafe"
 
 	"github.com/leslie-fei/fastcache/gomemory"
@@ -16,10 +17,10 @@ var (
 )
 
 const (
-	magic                 uint64 = 9259259527
-	PageSize                     = 64 * KB
-	perHashmapSlotLength         = 10
-	perHashmapElementSize        = 32
+	magic                  uint64 = 9259259527
+	PageSize                      = 64 * KB
+	perHashmapBucketLength        = 10
+	perHashmapElementSize         = 32
 )
 
 var (
@@ -29,6 +30,8 @@ var (
 	sizeOfHashmapBucketElement   = unsafe.Sizeof(hashMapBucketElement{})
 	sizeOfDataNode               = unsafe.Sizeof(DataNode{})
 	sizeOfBlockFreeListContainer = unsafe.Sizeof(lruAndFreeContainer{})
+	sizeOfShardType              = unsafe.Sizeof(shardType{})
+	sizeOfBigShardType           = unsafe.Sizeof(bigShardType{})
 )
 
 type Cache interface {
@@ -37,6 +40,7 @@ type Cache interface {
 	Del(key string) error
 	Len() uint64
 	Peek(key string) ([]byte, error)
+	Close() error
 }
 
 func NewCache(size int, c *Config) (Cache, error) {
@@ -77,29 +81,17 @@ func NewCache(size int, c *Config) (Cache, error) {
 		return nil, err
 	}
 
-	/**
-	1. metadata 记录内存基本信息
-	2. blockFreeContainer中包含1~16M的内存对象分配池
-	3. 一切数据分配都通过blockFreeContainer中的FreeList来分配, 目前一共有25个FreeList, 从1~16M之间数据块分配
-	4. FreeList中保存的是可用数据块, 数据块DataNode是一个单向链表
-	5. 除了metadata以外的数据通过FreeList中取出DataNode进行转换, 涉及的对象都是定长对象, 简单高效
-	6. 当触发空间不足需要淘汰时, 判断Set时的数据需要大小, 去对应的FreeList的LRU list中淘汰最早的用来补充这次Set
-	7. cache分块, 通过shared对象, 每个shared对象包含hashmap locker etc
-	8. 保证进程线程安全, 通过processLocker or threadLocker, 当时候GO内存时初始化threadLocker, 当内存是共享内存模型时就初始化processLocker
-	9. processLocker就是在共享内存中通过atomic通过CAS进行, 如果CAS失败大量并发情况下退化到file lock, 保证不会死循环占用过多CPU
-	*/
-	// Question: 当内存不足的时候怎么进行淘汰, 一个Set对象需要包含, key DataNode, val DataNode, bucketElement{key val} DataNode
-	// 都通过val的长度来, 如果申请key 1KB空间不足时, 就去淘汰一个val 1KB的节点数据
 	metadata := (*Metadata)(mem.Ptr())
-	// TODO global locker init
 	metadata.GlobalLocker = &threadLocker{}
 	metadata.GlobalLocker.Lock()
 	defer metadata.GlobalLocker.Unlock()
-	// new globalAllocator
 	ga := &globalAllocator{
 		mem:      mem,
 		metadata: metadata,
 	}
+	bigBucketLen := math.Ceil(float64(config.BigDataLen) / float64(perHashmapBucketLength))
+	bucketLen := math.Ceil(float64(config.MaxElementLen) / float64(config.Shards) / float64(perHashmapBucketLength))
+	bigDataIndex := dataSizeToIndex(uint64(config.BigDataSize))
 	// if magic not equals or memory data size changed should init memory
 	reinitialize := metadata.Magic != magic || metadata.TotalSize != mem.Size()
 	if reinitialize {
@@ -108,79 +100,160 @@ func NewCache(size int, c *Config) (Cache, error) {
 		metadata.Magic = magic
 		metadata.TotalSize = mem.Size()
 		metadata.Shards = config.Shards
-		// TODO shards memory allocator
-	}
-	// TODO shard and shard lockers
-	// TODO 可以初始化的时候分配一个最小的bigFreeContainer, 和每个shard下的freeContainer, 确保可以保证最小的数据量进行分配淘汰
-	bigFreePtr, _, err := ga.Alloc(uint64(sizeOfBlockFreeListContainer))
-	if err != nil {
-		return nil, err
-	}
-	bigFreeContainer := (*lruAndFreeContainer)(bigFreePtr)
-	bigFreeContainer.Init(ga.Base())
 
-	// hashmap
-	bucketLen := 1024
-	bucketSize := uint64(bucketLen) * uint64(sizeOfHashmapBucket)
-	hashPtr, _, err := ga.Alloc(uint64(sizeOfHashmap) + bucketSize)
-	if err != nil {
-		return nil, err
-	}
-	bigHashmap := (*hashMap)(hashPtr)
-	bigHashmap.bucketLen = uint32(bucketLen)
-
-	bigShard := &shard{
-		locker:    ga.Locker(),
-		hashmap:   bigHashmap,
-		container: bigFreeContainer,
-		allocator: ga,
-	}
-
-	shards := make([]*shardProxy, metadata.Shards)
-	for i := 0; i < len(shards); i++ {
-		// locker
-		locker := &threadLocker{}
-
-		// hashmap
-		bucketLen := 1024
-		bucketSize := uint64(bucketLen) * uint64(sizeOfHashmapBucket)
-		hashPtr, _, err := ga.Alloc(uint64(sizeOfHashmap) + bucketSize)
+		// big shard
+		bigOffset, err := allocBigShard(ga, uint32(bigBucketLen))
 		if err != nil {
 			return nil, err
 		}
-		hashmap := (*hashMap)(hashPtr)
-		hashmap.bucketLen = uint32(bucketLen)
-
-		// free block list
-		freePtr, _, err := ga.Alloc(uint64(sizeOfBlockFreeListContainer))
-		if err != nil {
-			return nil, err
+		metadata.BigShardOffset = bigOffset
+		// shards
+		metadata.ShardsOffset = ga.Offset()
+		for i := 0; i < int(metadata.Shards); i++ {
+			if _, err = allocShard(ga, config.MemoryType, uint32(bucketLen), config.ShardPerAllocSize); err != nil {
+				return nil, err
+			}
 		}
+	}
 
-		freeContainer := (*lruAndFreeContainer)(freePtr)
-		freeContainer.Init(ga.Base())
-		allocator := &shardAllocator{
-			global:   ga,
-			growSize: MB,
-		}
+	bigType := (*bigShardType)(mem.PtrOffset(metadata.BigShardOffset))
+	bigShard := toBigShard(ga, bigType)
 
-		shr := &shard{
-			locker:    locker,
-			hashmap:   hashmap,
-			container: freeContainer,
-			allocator: allocator,
-		}
-
-		shards[i] = &shardProxy{
-			shard:    shr,
+	shards := make([]*shardProxy, 0, metadata.Shards)
+	shardOffset := metadata.ShardsOffset
+	for i := 0; i < int(config.Shards); i++ {
+		stType := (*shardType)(unsafe.Pointer(ga.Base() + uintptr(shardOffset)))
+		shr := toShard(ga, config.MemoryType, stType)
+		shards = append(shards, &shardProxy{
 			bigShard: bigShard,
-		}
+			shard:    shr,
+			bigIndex: bigDataIndex,
+		})
+		shardOffset += uint64(stType.Size)
 	}
 
-	return &cache{metadata: metadata, shards: shards}, nil
+	return &cache{metadata: metadata, shards: shards, mem: mem}, nil
+}
+
+func toBigShard(ga *globalAllocator, bigType *bigShardType) *shard {
+	hashmapPtr := uintptr(bigType.HashMapOffset) + ga.Base()
+	hashmap := (*hashMap)(unsafe.Pointer(hashmapPtr))
+	containerPtr := uintptr(bigType.ContainerOffset) + ga.Base()
+	container := (*lruAndFreeContainer)(unsafe.Pointer(containerPtr))
+	return &shard{
+		locker:    ga.Locker(),
+		allocator: ga,
+		hashmap:   hashmap,
+		container: container,
+	}
+}
+
+func toShard(ga *globalAllocator, memType MemoryType, shardT *shardType) *shard {
+	var locker Locker
+	lockerPtr := uintptr(shardT.LockerOffset) + ga.Base()
+	if memType == GO {
+		locker = (*threadLocker)(unsafe.Pointer(lockerPtr))
+	} else {
+		locker = (*processLocker)(unsafe.Pointer(lockerPtr))
+	}
+	hashmapPtr := uintptr(shardT.HashMapOffset) + ga.Base()
+	hashmap := (*hashMap)(unsafe.Pointer(hashmapPtr))
+	containerPtr := uintptr(shardT.ContainerOffset) + ga.Base()
+	container := (*lruAndFreeContainer)(unsafe.Pointer(containerPtr))
+
+	allocator := &shardAllocator{
+		global:             ga,
+		shardAllocatorType: &shardT.Allocator,
+	}
+
+	return &shard{locker: locker, hashmap: hashmap, container: container, allocator: allocator}
+}
+
+func allocBigShard(ga *globalAllocator, bucketLen uint32) (offset uint64, err error) {
+	begin := ga.Offset()
+	var ptr unsafe.Pointer
+	ptr, offset, err = ga.Alloc(uint64(sizeOfBigShardType))
+	if err != nil {
+		return
+	}
+	typ := (*bigShardType)(ptr)
+	var hashOffset uint64
+	hashOffset, err = allocHashmap(ga, bucketLen)
+	if err != nil {
+		return
+	}
+	typ.HashMapOffset = hashOffset
+
+	var containerOffset uint64
+	containerOffset, err = allocLRUAndFreeContainer(ga)
+	if err != nil {
+		return
+	}
+	typ.ContainerOffset = containerOffset
+	typ.Size = uint32(ga.Offset() - begin)
+	return
+}
+
+func allocHashmap(ga *globalAllocator, bucketLen uint32) (offset uint64, err error) {
+	// hashmap
+	bucketSize := uint64(bucketLen) * uint64(sizeOfHashmapBucket)
+	hashmapTotal := uint64(sizeOfHashmap) + bucketSize
+	hashPtr, hashOffset, err := ga.Alloc(hashmapTotal)
+	if err != nil {
+		return 0, err
+	}
+	hashmap := (*hashMap)(hashPtr)
+	hashmap.bucketLen = bucketLen
+	return hashOffset, nil
+}
+
+func allocLRUAndFreeContainer(ga *globalAllocator) (offset uint64, err error) {
+	freePtr, containerOffset, err := ga.Alloc(uint64(sizeOfBlockFreeListContainer))
+	if err != nil {
+		return 0, err
+	}
+	container := (*lruAndFreeContainer)(freePtr)
+	container.Init(ga.Base())
+	return containerOffset, nil
+}
+
+func allocShard(ga *globalAllocator, memType MemoryType, bucketLen uint32, perAllocSize uint64) (uint64, error) {
+	// shardTypeHead + locker + hashmap + lruAndFreeContainer
+	begin := ga.Offset()
+	ptr, offset, err := ga.Alloc(uint64(sizeOfShardType))
+	if err != nil {
+		return 0, err
+	}
+	typ := (*shardType)(ptr)
+	if memType == GO {
+		_, typ.LockerOffset, err = ga.Alloc(uint64(unsafe.Sizeof(threadLocker{})))
+		if err != nil {
+			return 0, err
+		}
+	} else {
+		_, typ.LockerOffset, err = ga.Alloc(uint64(unsafe.Sizeof(processLocker{})))
+	}
+
+	hashOffset, err := allocHashmap(ga, bucketLen)
+	if err != nil {
+		return 0, err
+	}
+	typ.HashMapOffset = hashOffset
+
+	containerOffset, err := allocLRUAndFreeContainer(ga)
+	if err != nil {
+		return 0, err
+	}
+	typ.ContainerOffset = containerOffset
+
+	typ.Allocator.growSize = perAllocSize
+	typ.Size = uint32(ga.Offset() - begin)
+
+	return offset, nil
 }
 
 type cache struct {
+	mem      Memory
 	metadata *Metadata
 	shards   []*shardProxy
 	len      uint64
@@ -225,6 +298,13 @@ func (l *cache) Del(key string) error {
 
 func (l *cache) Len() uint64 {
 	return l.len
+}
+
+func (l *cache) Close() error {
+	if l.mem != nil {
+		return l.mem.Detach()
+	}
+	return nil
 }
 
 func (l *cache) shard(hash uint64) *shardProxy {

@@ -19,9 +19,10 @@ const (
 	sharding = 128
 	capacity = 100
 	//benchcount = 1 << 20
-	benchcount = 1 << 10
-	valCount   = 25
+	benchcount = 1 << 14
 )
+
+var valCount = int(math.Log2(float64(16 * fastcache.MB)))
 
 var (
 	benchkeys = make([]string, 0, benchcount)
@@ -40,7 +41,8 @@ func init() {
 	}
 
 	for i := 0; i < valCount; i++ {
-		benchVals = append(benchVals, make([]byte, int(math.Pow(float64(i), 2))))
+		c := i + 1
+		benchVals = append(benchVals, make([]byte, int(math.Pow(float64(c), 2))))
 	}
 
 	//go func() {
@@ -98,7 +100,9 @@ func BenchmarkFastCache_Get(b *testing.B) {
 		var i = 0
 		for pb.Next() {
 			index := getIndex(i)
-			mc.Get(benchkeys[index])
+			if _, err := mc.Get(benchkeys[index]); err != nil {
+				panic(err)
+			}
 			i++
 		}
 	})

@@ -12,7 +12,6 @@ var (
 )
 
 const FreeListLen = 25 // 1 2 4 8 ... 16M, max free DataNode size = 16M
-var SmallFreeListIndex = dataSizeToIndex(16 * KB)
 
 type lruAndFreeContainer struct {
 	freeLists [FreeListLen]blockFreeList
@@ -135,6 +134,7 @@ func (b *lruAndFreeContainer) Free(base uintptr, node *DataNode, lruNode *listNo
 	next := freeList.Head
 	node.Next = next
 	freeList.Head = uint64(uintptr(unsafe.Pointer(node)) - base)
+	freeList.Len++
 }
 
 func (b *lruAndFreeContainer) Evict(allocator Allocator, size uint64, onEvict func(node *listNode)) error {

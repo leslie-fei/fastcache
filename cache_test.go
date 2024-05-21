@@ -31,7 +31,6 @@ func TestCache(t *testing.T) {
 				// if not found return ErrNotFound
 				_, _ = cc.Get(k)
 				_ = cc.Del(k)
-
 				index++
 			}
 		}()
