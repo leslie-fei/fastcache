@@ -7,7 +7,11 @@ import (
 )
 
 func TestCache(t *testing.T) {
-	cc, err := NewCache(128*MB, nil)
+	cc, err := NewCache(GB, &Config{
+		MemoryType: SHM,
+		MemoryKey:  "/tmp/TestCache",
+		Shards:     128,
+	})
 	if err != nil {
 		panic(err)
 	}

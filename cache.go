@@ -49,15 +49,7 @@ func NewCache(size int, c *Config) (Cache, error) {
 		return nil, ErrMemorySizeTooSmall
 	}
 
-	config := DefaultConfig()
-	if c != nil {
-		if c.MemoryType > 0 {
-			config.MemoryType = c.MemoryType
-		}
-		if c.Shards > 0 {
-			config.Shards = c.Shards
-		}
-	}
+	config := mergeConfig(c)
 
 	var mem Memory
 	switch config.MemoryType {
@@ -82,9 +74,6 @@ func NewCache(size int, c *Config) (Cache, error) {
 	}
 
 	metadata := (*Metadata)(mem.Ptr())
-	metadata.GlobalLocker = &threadLocker{}
-	metadata.GlobalLocker.Lock()
-	defer metadata.GlobalLocker.Unlock()
 	ga := &globalAllocator{
 		mem:      mem,
 		metadata: metadata,
@@ -101,6 +90,12 @@ func NewCache(size int, c *Config) (Cache, error) {
 		metadata.TotalSize = mem.Size()
 		metadata.Shards = config.Shards
 
+		lockerOffset, err := allocLocker(ga, config.MemoryType)
+		if err != nil {
+			return nil, err
+		}
+		metadata.LockerOffset = lockerOffset
+
 		// big shard
 		bigOffset, err := allocBigShard(ga, uint32(bigBucketLen))
 		if err != nil {
@@ -115,6 +110,8 @@ func NewCache(size int, c *Config) (Cache, error) {
 			}
 		}
 	}
+
+	ga.locker = toLocker(ga, config.MemoryType, metadata.LockerOffset)
 
 	bigType := (*bigShardType)(mem.PtrOffset(metadata.BigShardOffset))
 	bigShard := toBigShard(ga, bigType)
@@ -135,6 +132,29 @@ func NewCache(size int, c *Config) (Cache, error) {
 	return &cache{metadata: metadata, shards: shards, mem: mem}, nil
 }
 
+func mergeConfig(c *Config) *Config {
+	config := DefaultConfig()
+	if c != nil {
+		config.MemoryKey = c.MemoryKey
+		if c.MemoryType > 0 {
+			config.MemoryType = c.MemoryType
+		}
+		if c.Shards > 0 {
+			config.Shards = c.Shards
+		}
+		if c.MaxElementLen > 0 {
+			config.MaxElementLen = c.MaxElementLen
+		}
+		if c.BigDataSize > 0 {
+			config.BigDataSize = c.BigDataSize
+		}
+		if c.BigDataLen > 0 {
+			config.BigDataLen = c.BigDataLen
+		}
+	}
+	return config
+}
+
 func toBigShard(ga *globalAllocator, bigType *bigShardType) *shard {
 	hashmapPtr := uintptr(bigType.HashMapOffset) + ga.Base()
 	hashmap := (*hashMap)(unsafe.Pointer(hashmapPtr))
@@ -148,25 +168,42 @@ func toBigShard(ga *globalAllocator, bigType *bigShardType) *shard {
 	}
 }
 
-func toShard(ga *globalAllocator, memType MemoryType, shardT *shardType) *shard {
-	var locker Locker
-	lockerPtr := uintptr(shardT.LockerOffset) + ga.Base()
-	if memType == GO {
-		locker = (*threadLocker)(unsafe.Pointer(lockerPtr))
-	} else {
-		locker = (*processLocker)(unsafe.Pointer(lockerPtr))
-	}
-	hashmapPtr := uintptr(shardT.HashMapOffset) + ga.Base()
+func toShard(ga *globalAllocator, memType MemoryType, shardTyp *shardType) *shard {
+	locker := toLocker(ga, memType, shardTyp.LockerOffset)
+	hashmapPtr := uintptr(shardTyp.HashMapOffset) + ga.Base()
 	hashmap := (*hashMap)(unsafe.Pointer(hashmapPtr))
-	containerPtr := uintptr(shardT.ContainerOffset) + ga.Base()
+	containerPtr := uintptr(shardTyp.ContainerOffset) + ga.Base()
 	container := (*lruAndFreeContainer)(unsafe.Pointer(containerPtr))
 
 	allocator := &shardAllocator{
 		global:             ga,
-		shardAllocatorType: &shardT.Allocator,
+		shardAllocatorType: &shardTyp.Allocator,
 	}
 
 	return &shard{locker: locker, hashmap: hashmap, container: container, allocator: allocator}
+}
+
+func toLocker(ga *globalAllocator, memType MemoryType, offset uint64) Locker {
+	if memType == GO {
+		return (*threadLocker)(unsafe.Pointer(ga.Base() + uintptr(offset)))
+	}
+	return (*processLocker)(unsafe.Pointer(ga.Base() + uintptr(offset)))
+}
+
+func allocLocker(ga *globalAllocator, memType MemoryType) (offset uint64, err error) {
+	if memType == GO {
+		_, offset, err = ga.Alloc(uint64(unsafe.Sizeof(threadLocker{})))
+		return
+	}
+
+	var ptr unsafe.Pointer
+	ptr, offset, err = ga.Alloc(uint64(unsafe.Sizeof(processLocker{})))
+	if err != nil {
+		return
+	}
+	locker := (*processLocker)(ptr)
+	locker.Reset()
+	return
 }
 
 func allocBigShard(ga *globalAllocator, bucketLen uint32) (offset uint64, err error) {
@@ -225,13 +262,10 @@ func allocShard(ga *globalAllocator, memType MemoryType, bucketLen uint32, perAl
 		return 0, err
 	}
 	typ := (*shardType)(ptr)
-	if memType == GO {
-		_, typ.LockerOffset, err = ga.Alloc(uint64(unsafe.Sizeof(threadLocker{})))
-		if err != nil {
-			return 0, err
-		}
-	} else {
-		_, typ.LockerOffset, err = ga.Alloc(uint64(unsafe.Sizeof(processLocker{})))
+
+	typ.LockerOffset, err = allocLocker(ga, memType)
+	if err != nil {
+		return 0, err
 	}
 
 	hashOffset, err := allocHashmap(ga, bucketLen)

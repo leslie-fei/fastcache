@@ -29,19 +29,19 @@ func (l *threadLocker) Reset() {
 }
 
 type processLocker struct {
-	write *int32
-	read  *int32
+	write int32
+	read  int32
 }
 
 func (l *processLocker) Lock() {
 	// TODO lock timeout
-	for !atomic.CompareAndSwapInt32(l.write, 0, 1) {
+	for !atomic.CompareAndSwapInt32(&l.write, 0, 1) {
 		runtime.Gosched()
 	}
 }
 
 func (l *processLocker) Unlock() {
-	if !atomic.CompareAndSwapInt32(l.write, 1, 0) {
+	if !atomic.CompareAndSwapInt32(&l.write, 1, 0) {
 		panic("unlock an unlocked-lock")
 	}
 }
@@ -56,7 +56,8 @@ func (l *processLocker) RUnlock() {
 }
 
 func (l *processLocker) Reset() {
-	*l.write = 0
+	l.write = 0
+	l.read = 0
 }
 
 var nopLocker = &nonLocker{}

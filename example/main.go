@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/leslie-fei/fastcache"
-	"github.com/leslie-fei/fastcache/mmap"
 )
 
 func main() {
@@ -23,22 +22,17 @@ func main() {
 
 	size = size * fastcache.MB
 
-	//mem := shm.NewMemory(key, uint64(size), true)
-	mem := mmap.NewMemory(key, uint64(size))
-	if err := mem.Attach(); err != nil {
-		panic(err)
-	}
-
-	defer func() {
-		if err := mem.Detach(); err != nil {
-			panic(err)
-		}
-	}()
-
-	cache, err := fastcache.NewCache(mem)
+	cache, err := fastcache.NewCache(128*fastcache.MB, &fastcache.Config{
+		MemoryType:    fastcache.SHM,
+		MemoryKey:     "/tmp/ExampleSharedMemory",
+		Shards:        1,
+		MaxElementLen: 20,
+	})
 	if err != nil {
 		panic(err)
 	}
+
+	defer cache.Close()
 
 	scanner := bufio.NewScanner(os.Stdin)
 	fmt.Println("Available commands: set <key> <value>, get <key>, del <key>, exit")

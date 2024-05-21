@@ -62,7 +62,9 @@ func getValIndex(i int) int {
 
 func BenchmarkFastCache_Set(b *testing.B) {
 	cache, err := fastcache.NewCache(fastcache.GB, &fastcache.Config{
-		Shards: sharding,
+		Shards:     sharding,
+		MemoryType: fastcache.SHM,
+		MemoryKey:  "/tmp/BenchmarkFastCache_Set",
 	})
 	if err != nil {
 		b.Fatal(err)

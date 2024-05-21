@@ -18,6 +18,7 @@ type Allocator interface {
 type globalAllocator struct {
 	mem      Memory
 	metadata *Metadata
+	locker   Locker
 }
 
 func (g *globalAllocator) Alloc(size uint64) (ptr unsafe.Pointer, offset uint64, err error) {
@@ -40,7 +41,7 @@ func (g *globalAllocator) Base() uintptr {
 }
 
 func (g *globalAllocator) Locker() Locker {
-	return g.metadata.GlobalLocker
+	return g.locker
 }
 
 func (g *globalAllocator) Offset() uint64 {
