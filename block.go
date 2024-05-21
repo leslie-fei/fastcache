@@ -12,7 +12,7 @@ var (
 )
 
 const FreeListLen = 25 // 1 2 4 8 ... 16M, max free DataNode size = 16M
-var SmallFreeListIndex = dataSizeToIndex(64 * KB)
+var SmallFreeListIndex = dataSizeToIndex(16 * KB)
 
 type lruAndFreeContainer struct {
 	freeLists [FreeListLen]blockFreeList

@@ -169,8 +169,6 @@ func NewCache(size int, c *Config) (Cache, error) {
 			hashmap:   hashmap,
 			container: freeContainer,
 			allocator: allocator,
-			//globalAllocator: ga,
-			//bigContainer:    bigFreeContainer,
 		}
 
 		shards[i] = &shardProxy{

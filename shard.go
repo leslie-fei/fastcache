@@ -14,7 +14,8 @@ type shardProxy struct {
 func (s *shardProxy) Set(hash uint64, key string, value []byte) error {
 	locker := s.shard.Locker()
 	locker.Lock()
-	dataIndex := dataSizeToIndex(uint64(len(value)))
+
+	dataIndex := dataSizeToIndex(hashmapElementSize(key, value))
 	isBig := dataIndex > SmallFreeListIndex
 	prev, node, el := s.shard.FindNode(hash, key)
 	exists := node != nil
