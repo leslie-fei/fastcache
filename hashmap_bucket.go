@@ -85,6 +85,15 @@ func (l *hashMapBucketElement) Equals(key string) bool {
 	return memequal(unsafe.Pointer(keyPtr), unsafe.Pointer(kh.Data), uintptr(len(key)))
 }
 
+func (l *hashMapBucketElement) Key() string {
+	var s string
+	sh := (*reflect.StringHeader)(unsafe.Pointer(&s))
+	keyPtr := uintptr(unsafe.Pointer(l)) + sizeOfHashmapBucketElement
+	sh.Data = keyPtr
+	sh.Len = int(l.keyLen)
+	return s
+}
+
 func (l *hashMapBucketElement) UpdateValue(value []byte) {
 	valPtr := uintptr(unsafe.Pointer(l)) + sizeOfHashmapBucketElement + uintptr(l.keyLen)
 	bh := (*reflect.SliceHeader)(unsafe.Pointer(&value))

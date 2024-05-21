@@ -6,20 +6,100 @@ import (
 	"unsafe"
 )
 
-type shard struct {
-	locker          Locker
-	hashmap         *hashMap
-	container       *lruAndFreeContainer
-	bigContainer    *lruAndFreeContainer
-	allocator       *shardAllocator
-	globalAllocator *globalAllocator
+type shardProxy struct {
+	shard    *shard // 多个
+	bigShard *shard // 全局
 }
 
-func (s *shard) Set(hash uint64, key string, value []byte) error {
-	locker := s.Locker()
+func (s *shardProxy) Set(hash uint64, key string, value []byte) error {
+	locker := s.shard.Locker()
 	locker.Lock()
+	dataIndex := dataSizeToIndex(uint64(len(value)))
+	isBig := dataIndex > SmallFreeListIndex
+	prev, node, el := s.shard.FindNode(hash, key)
+	exists := node != nil
+	// 如果set的数据在小分片中存在, 并且新的value数据已经过大是大数据块, 需要把shard中的删除
+	if exists && isBig {
+		_ = s.shard.del(hash, prev, node)
+		exists = false
+	}
+	if !exists {
+		bigLocker := s.bigShard.Locker()
+		bigLocker.Lock()
+		prev, node, el = s.bigShard.FindNode(hash, key)
+		if node != nil {
+			// 在big中找到, 那么就应该由bigShard处理
+			locker.Unlock()
+			defer bigLocker.Unlock()
+			return s.bigShard.Set(hash, key, value, prev, node, el)
+		} else if isBig {
+			// 都没有找到, 并且这个是一个大数据块, 所以这里需要放到大数据块中处理
+			// 释放shard locker
+			locker.Unlock()
+			defer bigLocker.Unlock()
+			return s.bigShard.Set(hash, key, value, prev, node, el)
+		}
+		// 如果bigShard中没找到, 并且不是bigdata, 那么就释放全局锁, 交给shard处理
+		bigLocker.Unlock()
+	}
 	defer locker.Unlock()
-	prevNode, node, el := s.hashmap.FindNode(s.allocator.Base(), hash, key)
+	return s.shard.Set(hash, key, value, prev, node, el)
+}
+
+func (s *shardProxy) Get(hash uint64, key string) ([]byte, error) {
+	locker := s.shard.Locker()
+	locker.RLock()
+	v, err := s.shard.Get(hash, key)
+	locker.RUnlock()
+	if err != nil && errors.Is(err, ErrNotFound) {
+		bigLocker := s.bigShard.Locker()
+		bigLocker.RLock()
+		defer bigLocker.RUnlock()
+		return s.bigShard.Get(hash, key)
+	}
+	return v, err
+}
+
+func (s *shardProxy) Peek(hash uint64, key string) ([]byte, error) {
+	locker := s.shard.Locker()
+	locker.RLock()
+	v, err := s.shard.Peek(hash, key)
+	locker.RUnlock()
+	if err != nil && errors.Is(err, ErrNotFound) {
+		bigLocker := s.bigShard.Locker()
+		bigLocker.RLock()
+		defer bigLocker.RUnlock()
+		return s.bigShard.Peek(hash, key)
+	}
+	return v, err
+}
+
+func (s *shardProxy) Del(hash uint64, key string) error {
+	locker := s.shard.Locker()
+	locker.Lock()
+	err := s.shard.Del(hash, key)
+	locker.Unlock()
+	if err != nil && errors.Is(err, ErrNotFound) {
+		bigLocker := s.bigShard.Locker()
+		bigLocker.Lock()
+		defer bigLocker.Unlock()
+		return s.bigShard.Del(hash, key)
+	}
+	return err
+}
+
+type shard struct {
+	locker    Locker
+	hashmap   *hashMap
+	container *lruAndFreeContainer
+	allocator Allocator
+}
+
+func (s *shard) FindNode(hash uint64, key string) (prev *DataNode, node *DataNode, el *hashMapBucketElement) {
+	return s.hashmap.FindNode(s.allocator.Base(), hash, key)
+}
+
+func (s *shard) Set(hash uint64, key string, value []byte, prev, node *DataNode, el *hashMapBucketElement) error {
 	isNew := node == nil
 	var err error
 	if isNew {
@@ -42,7 +122,7 @@ func (s *shard) Set(hash uint64, key string, value []byte) error {
 			if err != nil {
 				return err
 			}
-			_ = s.del(hash, prevNode, oldNode)
+			_ = s.del(hash, prev, oldNode)
 			isNew = true
 		} else {
 			// update data
@@ -54,53 +134,33 @@ func (s *shard) Set(hash uint64, key string, value []byte) error {
 		s.hashmap.Add(s.allocator.Base(), hash, node)
 	}
 
-	// 插入到LRU list中
-	if node.FreeBlockIndex > uint8(SmallFreeListIndex) {
-		gLocker := s.globalAllocator.Locker()
-		gLocker.Lock()
-		s.bigContainer.MoveToFront(s.globalAllocator.Base(), node, &el.lruNode)
-		gLocker.Unlock()
+	if isNew {
+		s.container.PushFront(s.allocator.Base(), node, &el.lruNode)
 	} else {
-		s.container.MoveToFront(s.globalAllocator.Base(), node, &el.lruNode)
+		s.container.MoveToFront(s.allocator.Base(), node, &el.lruNode)
 	}
 
 	return nil
 }
 
 func (s *shard) Get(hash uint64, key string) ([]byte, error) {
-	locker := s.Locker()
-	locker.RLock()
-	defer locker.RUnlock()
 	node, value, err := s.hashmap.Get(s.allocator.Base(), hash, key)
 	if err != nil {
 		return nil, err
 	}
 
 	el := NodeTo[hashMapBucketElement](node)
-	if node.FreeBlockIndex > uint8(SmallFreeListIndex) {
-		gLocker := s.globalAllocator.Locker()
-		gLocker.Lock()
-		s.bigContainer.MoveToFront(s.globalAllocator.Base(), node, &el.lruNode)
-		gLocker.Unlock()
-	} else {
-		s.container.MoveToFront(s.globalAllocator.Base(), node, &el.lruNode)
-	}
+	s.container.MoveToFront(s.allocator.Base(), node, &el.lruNode)
 
 	return value, nil
 }
 
 func (s *shard) Peek(hash uint64, key string) ([]byte, error) {
-	locker := s.Locker()
-	locker.RLock()
-	defer locker.RUnlock()
 	_, v, err := s.hashmap.Get(s.allocator.Base(), hash, key)
 	return v, err
 }
 
 func (s *shard) Del(hash uint64, key string) (err error) {
-	locker := s.Locker()
-	locker.Lock()
-	defer locker.Unlock()
 	prev, node, _ := s.hashmap.FindNode(s.allocator.Base(), hash, key)
 	return s.del(hash, prev, node)
 }
@@ -116,15 +176,7 @@ func (s *shard) del(hash uint64, prev *DataNode, node *DataNode) error {
 	}
 
 	el := NodeTo[hashMapBucketElement](node)
-	if node.FreeBlockIndex > uint8(SmallFreeListIndex) {
-		// 说明是来自与bigFreeContainer
-		locker := s.globalAllocator.Locker()
-		locker.Lock()
-		s.bigContainer.Free(s.allocator.Base(), node, &el.lruNode)
-		locker.Unlock()
-	} else {
-		s.container.Free(s.allocator.Base(), node, &el.lruNode)
-	}
+	s.container.Free(s.allocator.Base(), node, &el.lruNode)
 
 	return nil
 }
@@ -133,31 +185,24 @@ func (s *shard) allocOne(dataSize uint64) (*DataNode, error) {
 	if dataSize == 0 {
 		return nil, errors.New("data size is zero")
 	}
-
-	index := dataSizeToIndex(dataSize)
-	var allocator Allocator
-	var container *lruAndFreeContainer
-	// 大数据块需要去全局得大数据块bigFreeContainer中获取
-	if index > SmallFreeListIndex {
-		allocator = s.globalAllocator
-		container = s.bigContainer
-	} else {
-		// 小数据块直接在shard分片中直接分配, 不需要加锁, 这里的allocator Locker是一个nopLocker
-		allocator = s.allocator
-		container = s.container
-	}
-	locker := allocator.Locker()
-	locker.Lock()
-	defer locker.Unlock()
-	node, err := container.Alloc(s.globalAllocator, dataSize)
+	// 小数据块直接在shard分片中直接分配, 不需要加锁, 这里的allocator Locker是一个nopLocker
+	allocator := s.allocator
+	container := s.container
+	node, err := container.Alloc(allocator, dataSize)
 	if err != nil {
 		if errors.Is(err, ErrNoSpace) {
 			// 触发淘汰
-			if err = container.Evict(s.globalAllocator, dataSize); err != nil {
+			onEvict := func(lruNode *listNode) {
+				el := (*hashMapBucketElement)(unsafe.Pointer(lruNode))
+				key := el.Key()
+				hash := xxHashString(key)
+				_ = s.Del(hash, key)
+			}
+			if err = container.Evict(allocator, dataSize, onEvict); err != nil {
 				return nil, err
 			}
 			// 因为已经触发过淘汰, 这里一定能拿到数据块
-			node, err = container.Alloc(s.globalAllocator, dataSize)
+			node, err = container.Alloc(allocator, dataSize)
 			return node, err
 		}
 		return nil, err

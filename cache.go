@@ -118,7 +118,25 @@ func NewCache(size int, c *Config) (Cache, error) {
 	}
 	bigFreeContainer := (*lruAndFreeContainer)(bigFreePtr)
 	bigFreeContainer.Init(ga.Base())
-	shards := make([]*shard, metadata.Shards)
+
+	// hashmap
+	bucketLen := 1024
+	bucketSize := uint64(bucketLen) * uint64(sizeOfHashmapBucket)
+	hashPtr, _, err := ga.Alloc(uint64(sizeOfHashmap) + bucketSize)
+	if err != nil {
+		return nil, err
+	}
+	bigHashmap := (*hashMap)(hashPtr)
+	bigHashmap.bucketLen = uint32(bucketLen)
+
+	bigShard := &shard{
+		locker:    ga.Locker(),
+		hashmap:   bigHashmap,
+		container: bigFreeContainer,
+		allocator: ga,
+	}
+
+	shards := make([]*shardProxy, metadata.Shards)
 	for i := 0; i < len(shards); i++ {
 		// locker
 		locker := &threadLocker{}
@@ -147,15 +165,18 @@ func NewCache(size int, c *Config) (Cache, error) {
 		}
 
 		shr := &shard{
-			locker:          locker,
-			hashmap:         hashmap,
-			container:       freeContainer,
-			allocator:       allocator,
-			globalAllocator: ga,
-			bigContainer:    bigFreeContainer,
+			locker:    locker,
+			hashmap:   hashmap,
+			container: freeContainer,
+			allocator: allocator,
+			//globalAllocator: ga,
+			//bigContainer:    bigFreeContainer,
 		}
 
-		shards[i] = shr
+		shards[i] = &shardProxy{
+			shard:    shr,
+			bigShard: bigShard,
+		}
 	}
 
 	return &cache{metadata: metadata, shards: shards}, nil
@@ -163,7 +184,7 @@ func NewCache(size int, c *Config) (Cache, error) {
 
 type cache struct {
 	metadata *Metadata
-	shards   []*shard
+	shards   []*shardProxy
 	len      uint64
 }
 
@@ -208,7 +229,7 @@ func (l *cache) Len() uint64 {
 	return l.len
 }
 
-func (l *cache) shard(hash uint64) *shard {
+func (l *cache) shard(hash uint64) *shardProxy {
 	idx := hash % uint64(len(l.shards))
 	return l.shards[idx]
 }

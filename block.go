@@ -119,6 +119,11 @@ func (b *lruAndFreeContainer) MoveToFront(base uintptr, node *DataNode, lruNode 
 	lruList.MoveToFront(base, lruNode)
 }
 
+func (b *lruAndFreeContainer) PushFront(base uintptr, node *DataNode, lruNode *listNode) {
+	lruList := &b.lruLists[node.FreeBlockIndex]
+	lruList.PushFront(base, lruNode)
+}
+
 func (b *lruAndFreeContainer) Free(base uintptr, node *DataNode, lruNode *listNode) {
 	// remove LRU list
 	lruList := &b.lruLists[node.FreeBlockIndex]
@@ -132,13 +137,14 @@ func (b *lruAndFreeContainer) Free(base uintptr, node *DataNode, lruNode *listNo
 	freeList.Head = uint64(uintptr(unsafe.Pointer(node)) - base)
 }
 
-func (b *lruAndFreeContainer) Evict(allocator *globalAllocator, size uint64) error {
+func (b *lruAndFreeContainer) Evict(allocator Allocator, size uint64, onEvict func(node *listNode)) error {
 	index := dataSizeToIndex(size)
 	lruList := &b.lruLists[index]
 	if lruList.Len() == 0 {
 		return ErrLRUListEmpty
 	}
 	oldest := lruList.Back(allocator.Base())
+	onEvict(oldest)
 	lruList.Remove(allocator.Base(), oldest)
 	return nil
 }
