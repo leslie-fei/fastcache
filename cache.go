@@ -37,7 +37,7 @@ var (
 type Cache interface {
 	Get(key string) ([]byte, error)
 	Set(key string, value []byte) error
-	Del(key string) error
+	Delete(key string) error
 	Len() uint64
 	Peek(key string) ([]byte, error)
 	Close() error
@@ -324,7 +324,7 @@ func (l *cache) Set(key string, value []byte) error {
 	return nil
 }
 
-func (l *cache) Del(key string) error {
+func (l *cache) Delete(key string) error {
 	hash := xxHashString(key)
 	shr := l.shard(hash)
 	return shr.Del(hash, key)

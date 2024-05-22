@@ -17,13 +17,6 @@ type threadLocker struct {
 	sync.RWMutex
 }
 
-//func (l *threadLocker) Lock() {
-//
-//}
-//
-//func (l *threadLocker) Unlock() {
-//}
-
 func (l *threadLocker) Reset() {
 	// ignore
 }

@@ -124,6 +124,7 @@ func (b *lruAndFreeContainer) PushFront(base uintptr, node *DataNode, lruNode *l
 }
 
 func (b *lruAndFreeContainer) Free(base uintptr, node *DataNode, lruNode *listNode) {
+	// TODO 优化代码, 把freeList跟LRU区分更加合理
 	// remove LRU list
 	lruList := &b.lruLists[node.FreeBlockIndex]
 	lruList.Remove(base, lruNode)

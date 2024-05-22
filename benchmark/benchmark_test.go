@@ -2,6 +2,7 @@ package benchmark
 
 import (
 	"context"
+	"fmt"
 	"math"
 	_ "net/http/pprof"
 	"testing"
@@ -10,18 +11,14 @@ import (
 	"github.com/Yiling-J/theine-go"
 	"github.com/allegro/bigcache/v3"
 	"github.com/dgraph-io/ristretto"
-	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/leslie-fei/fastcache"
-	"github.com/leslie-fei/fastcache/benchmark/utils"
-	"github.com/lxzan/memorycache"
-	"github.com/stretchr/testify/assert"
 )
 
 const (
 	sharding = 128
 	capacity = 100
 	//benchcount = 1 << 20
-	benchcount = 1 << 14
+	benchcount = 1 << 20
 )
 
 var valCount = int(math.Log2(float64(16 * fastcache.MB)))
@@ -29,17 +26,11 @@ var valCount = int(math.Log2(float64(16 * fastcache.MB)))
 var (
 	benchkeys = make([]string, 0, benchcount)
 	benchVals = make([][]byte, 0)
-
-	options = []memorycache.Option{
-		memorycache.WithBucketNum(sharding),
-		memorycache.WithBucketSize(capacity/10, capacity),
-		memorycache.WithSwissTable(false),
-	}
 )
 
 func init() {
 	for i := 0; i < benchcount; i++ {
-		benchkeys = append(benchkeys, string(utils.AlphabetNumeric.Generate(16)))
+		benchkeys = append(benchkeys, fmt.Sprintf("key_%d", i))
 	}
 
 	for i := 0; i < valCount; i++ {
@@ -47,11 +38,6 @@ func init() {
 		benchVals = append(benchVals, make([]byte, int(math.Pow(float64(c), 2))))
 	}
 
-	//go func() {
-	//	if err := http.ListenAndServe(":6060", nil); err != nil {
-	//		panic(err)
-	//	}
-	//}()
 }
 
 func getIndex(i int) int {
@@ -342,39 +328,4 @@ func BenchmarkTheine_SetAndGet(b *testing.B) {
 			i++
 		}
 	})
-}
-
-// 测试LRU算法实现的正确性
-func TestLRU_Impl(t *testing.T) {
-	var f = func() {
-		var count = 10000
-		var capacity = 5000
-		var mc = memorycache.New[string, int](
-			memorycache.WithBucketNum(1),
-			memorycache.WithBucketSize(capacity, capacity),
-		)
-		var cache, _ = lru.New[string, int](capacity)
-		for i := 0; i < count; i++ {
-			key := string(utils.AlphabetNumeric.Generate(16))
-			val := utils.AlphabetNumeric.Intn(capacity)
-			mc.Set(key, val, time.Hour)
-			cache.Add(key, val)
-		}
-
-		keys := cache.Keys()
-		assert.Equal(t, mc.Len(), capacity)
-		assert.Equal(t, mc.Len(), cache.Len())
-		assert.Equal(t, mc.Len(), len(keys))
-
-		for _, key := range keys {
-			v1, ok1 := mc.Get(key)
-			v2, _ := cache.Peek(key)
-			assert.True(t, ok1)
-			assert.Equal(t, v1, v2)
-		}
-	}
-
-	for i := 0; i < 10; i++ {
-		f()
-	}
 }
