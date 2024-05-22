@@ -1,12 +1,14 @@
 package benchmark
 
 import (
+	"context"
 	"math"
 	_ "net/http/pprof"
 	"testing"
 	"time"
 
 	"github.com/Yiling-J/theine-go"
+	"github.com/allegro/bigcache/v3"
 	"github.com/dgraph-io/ristretto"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/leslie-fei/fastcache"
@@ -69,6 +71,13 @@ func BenchmarkFastCache_Set(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
+
+	err = cache.Set("k1", []byte("v1"))
+	b.Log("set err: ", err)
+
+	value, err := cache.Get("k1")
+	b.Log("value: ", value, "err: ", err)
+
 	var mc = cache
 	b.ResetTimer()
 	b.ReportAllocs()
@@ -134,6 +143,82 @@ func BenchmarkFastCache_SetAndGet(b *testing.B) {
 				mc.Set(benchkeys[index], value)
 			} else {
 				mc.Get(benchkeys[index])
+			}
+			i++
+		}
+	})
+}
+
+func BenchmarkBigCache_Set(b *testing.B) {
+	cache, _ := bigcache.New(context.Background(), bigcache.Config{
+		Shards:             sharding,
+		LifeWindow:         10 * time.Minute,
+		MaxEntriesInWindow: 256,
+		MaxEntrySize:       10000,
+		Verbose:            false,
+	})
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		var i = 0
+		for pb.Next() {
+			index := getIndex(i)
+			value := benchVals[getValIndex(i)]
+			cache.Set(benchkeys[index], value)
+			i++
+		}
+	})
+}
+
+func BenchmarkBigCache_Get(b *testing.B) {
+	cache, _ := bigcache.New(context.Background(), bigcache.Config{
+		Shards:             sharding,
+		LifeWindow:         10 * time.Minute,
+		MaxEntriesInWindow: 256,
+		MaxEntrySize:       10000,
+		Verbose:            false,
+	})
+	for i := 0; i < benchcount; i++ {
+		value := benchVals[getValIndex(i)]
+		cache.Set(benchkeys[i%benchcount], value)
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		var i = 0
+		for pb.Next() {
+			index := getIndex(i)
+			cache.Get(benchkeys[index])
+			i++
+		}
+	})
+}
+
+func BenchmarkBigCache_SetAndGet(b *testing.B) {
+	cache, _ := bigcache.New(context.Background(), bigcache.Config{
+		Shards:             sharding,
+		LifeWindow:         10 * time.Minute,
+		MaxEntriesInWindow: 256,
+		MaxEntrySize:       10000,
+		Verbose:            false,
+	})
+	for i := 0; i < benchcount; i++ {
+		value := benchVals[getValIndex(i)]
+		cache.Set(benchkeys[i%benchcount], value)
+	}
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		var i = 0
+		for pb.Next() {
+			index := getIndex(i)
+			if index&7 == 0 {
+				value := benchVals[getValIndex(i)]
+				cache.Set(benchkeys[index], value)
+			} else {
+				cache.Get(benchkeys[index])
 			}
 			i++
 		}
@@ -301,13 +386,4 @@ func TestLRU_Impl(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		f()
 	}
-}
-
-func BenchmarkEmpty(b *testing.B) {
-	b.RunParallel(func(pb *testing.PB) {
-		i := 0
-		for pb.Next() {
-			i++
-		}
-	})
 }

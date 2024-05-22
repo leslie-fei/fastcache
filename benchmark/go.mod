@@ -14,6 +14,7 @@ require (
 )
 
 require (
+	github.com/allegro/bigcache/v3 v3.1.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/dolthub/maphash v0.1.0 // indirect
