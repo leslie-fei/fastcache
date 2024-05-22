@@ -64,20 +64,11 @@ func getValIndex(i int) int {
 
 func BenchmarkFastCache_Set(b *testing.B) {
 	cache, err := fastcache.NewCache(fastcache.GB, &fastcache.Config{
-		Shards:     sharding,
-		MemoryType: fastcache.SHM,
-		MemoryKey:  "/tmp/BenchmarkFastCache_Set",
+		Shards: sharding,
 	})
 	if err != nil {
 		b.Fatal(err)
 	}
-
-	err = cache.Set("k1", []byte("v1"))
-	b.Log("set err: ", err)
-
-	value, err := cache.Get("k1")
-	b.Log("value: ", value, "err: ", err)
-
 	var mc = cache
 	b.ResetTimer()
 	b.ReportAllocs()

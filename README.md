@@ -8,6 +8,7 @@ This is a high-performance, multi-process shared memory caching system implement
  - High performance and low latency
  - Supports various memory allocation strategies (Go memory, SHM, MMap, etc.)
  - Zero GC
+ - support LRU 
 
 # Usage
 
