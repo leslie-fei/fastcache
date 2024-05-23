@@ -19,8 +19,8 @@ var (
 const (
 	magic                  uint64 = 9259259527
 	PageSize                      = 64 * KB
-	perHashmapBucketLength        = 10
-	perHashmapElementSize         = 32
+	perHashmapBucketLength        = 3
+	perHashmapElementSize         = 512
 )
 
 var (
@@ -49,7 +49,7 @@ func NewCache(size int, c *Config) (Cache, error) {
 		return nil, ErrMemorySizeTooSmall
 	}
 
-	config := mergeConfig(c)
+	config := mergeConfig(size, c)
 
 	var mem Memory
 	switch config.MemoryType {
@@ -78,8 +78,8 @@ func NewCache(size int, c *Config) (Cache, error) {
 		mem:      mem,
 		metadata: metadata,
 	}
-	bigBucketLen := math.Ceil(float64(config.BigDataLen) / float64(perHashmapBucketLength))
-	bucketLen := math.Ceil(float64(config.MaxElementLen) / float64(config.Shards) / float64(perHashmapBucketLength))
+	bigBucketLen := math.Ceil(float64(config.MaxBigDataLen)/float64(perHashmapBucketLength)) / 0.75
+	bucketLen := math.Ceil(float64(config.MaxElementLen)/float64(config.Shards)/float64(perHashmapBucketLength)) / 0.75
 	bigDataIndex := dataSizeToIndex(uint64(config.BigDataSize))
 	// if magic not equals or memory data size changed should init memory
 	reinitialize := metadata.Magic != magic || metadata.TotalSize != mem.Size()
@@ -132,8 +132,12 @@ func NewCache(size int, c *Config) (Cache, error) {
 	return &cache{metadata: metadata, shards: shards, mem: mem}, nil
 }
 
-func mergeConfig(c *Config) *Config {
+func mergeConfig(size int, c *Config) *Config {
 	config := DefaultConfig()
+	// 默认MaxElementLen通过设置的内存大小计算出来
+	config.MaxElementLen = uint32(size / perHashmapElementSize)
+	// 默认是MaxElementLen的1/20
+	config.MaxBigDataLen = config.MaxElementLen / 20
 	if c != nil {
 		config.MemoryKey = c.MemoryKey
 		if c.MemoryType > 0 {
@@ -148,8 +152,8 @@ func mergeConfig(c *Config) *Config {
 		if c.BigDataSize > 0 {
 			config.BigDataSize = c.BigDataSize
 		}
-		if c.BigDataLen > 0 {
-			config.BigDataLen = c.BigDataLen
+		if c.MaxBigDataLen > 0 {
+			config.MaxBigDataLen = c.MaxBigDataLen
 		}
 	}
 	return config

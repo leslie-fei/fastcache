@@ -69,9 +69,9 @@ func (b *lruAndFreeContainer) Alloc(allocator Allocator, dataSize uint64) (*Data
 
 	if freeList.Len == 0 {
 		// if alloc size less than PageSize will alloc PageSize, other alloc nodeSize
-		allocSize := uint64(PageSize)
-		if nodeSize > PageSize {
-			allocSize = nodeSize
+		allocSize := nodeSize
+		if nodeSize < PageSize {
+			allocSize = (uint64(PageSize)/nodeSize + 1) * nodeSize
 		}
 		_, offset, err := allocator.Alloc(allocSize)
 		if err != nil {
@@ -146,7 +146,6 @@ func (b *lruAndFreeContainer) Evict(allocator Allocator, size uint64, onEvict fu
 	}
 	oldest := lruList.Back(allocator.Base())
 	onEvict(oldest)
-	lruList.Remove(allocator.Base(), oldest)
 	return nil
 }
 

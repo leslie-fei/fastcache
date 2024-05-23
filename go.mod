@@ -10,6 +10,7 @@ require (
 )
 
 require (
+	github.com/cespare/xxhash/v2 v2.3.0
 	github.com/edsrzf/mmap-go v1.1.0
 	github.com/stretchr/testify v1.9.0
 )

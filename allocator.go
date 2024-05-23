@@ -88,7 +88,8 @@ func (s *shardAllocator) Alloc(size uint64) (ptr unsafe.Pointer, offset uint64, 
 		// 当shardMemory没有可以分配出size大小的块, 就需要去globalAllocator中申请
 		globalLocker := s.global.Locker()
 		globalLocker.Lock()
-		ptr, offset, err = s.global.Alloc(s.growSize)
+		allocSize := min(s.growSize, size)
+		ptr, offset, err = s.global.Alloc(allocSize)
 		globalLocker.Unlock()
 		if err != nil {
 			return
