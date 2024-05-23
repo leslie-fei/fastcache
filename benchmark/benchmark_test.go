@@ -22,9 +22,8 @@ import (
 func memmove(dst, src unsafe.Pointer, size uintptr)
 
 const (
-	sharding = 128
-	capacity = 100
-	//benchcount = 1 << 20
+	sharding   = 128
+	capacity   = 100
 	benchcount = 1 << 20
 )
 

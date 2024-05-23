@@ -202,12 +202,13 @@ func (s *shard) allocOne(dataSize uint64) (*DataNode, error) {
 	if dataSize == 0 {
 		return nil, errors.New("data size is zero")
 	}
-	// 触发淘汰
 	onEvict := func(lruNode *listNode) {
+		// 触发淘汰后, 还需要把hashmap里面的对应数据给删除
 		el := (*hashMapBucketElement)(unsafe.Pointer(lruNode))
 		key := el.Key()
 		hash := xxHashString(key)
-		_ = s.Del(hash, key)
+		prev, node, _ := s.hashmap.FindNode(s.allocator.Base(), hash, key)
+		_ = s.hashmap.Del(s.allocator.Base(), hash, prev, node)
 	}
 	// 小数据块直接在shard分片中直接分配, 不需要加锁, 这里的allocator Locker是一个nopLocker
 	allocator := s.allocator

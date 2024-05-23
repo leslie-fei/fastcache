@@ -146,6 +146,7 @@ func (b *lruAndFreeContainer) Evict(allocator Allocator, size uint64, onEvict fu
 	}
 	oldest := lruList.Back(allocator.Base())
 	onEvict(oldest)
+	lruList.remove(allocator.Base(), oldest)
 	return nil
 }
 

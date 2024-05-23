@@ -72,7 +72,7 @@ func main() {
 				fmt.Println("Usage: del <key>")
 				continue
 			}
-			if err := cache.Del(parts[1]); err != nil {
+			if err := cache.Delete(parts[1]); err != nil {
 				fmt.Println("delete error: ", err)
 				continue
 			}
