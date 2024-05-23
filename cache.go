@@ -79,7 +79,8 @@ func NewCache(size int, c *Config) (Cache, error) {
 		metadata: metadata,
 	}
 	bigBucketLen := math.Ceil(float64(config.MaxBigDataLen)/float64(perHashmapBucketLength)) / 0.75
-	bucketLen := math.Ceil(float64(config.MaxElementLen)/float64(config.Shards)/float64(perHashmapBucketLength)) / 0.75
+	shardMaxLen := uint32(float64(config.MaxElementLen) / float64(config.Shards))
+	bucketLen := math.Ceil(float64(shardMaxLen)/float64(perHashmapBucketLength)) / 0.75
 	bigDataIndex := dataSizeToIndex(uint64(config.BigDataSize))
 	// if magic not equals or memory data size changed should init memory
 	reinitialize := metadata.Magic != magic || metadata.TotalSize != mem.Size()
@@ -115,12 +116,14 @@ func NewCache(size int, c *Config) (Cache, error) {
 
 	bigType := (*bigShardType)(mem.PtrOffset(metadata.BigShardOffset))
 	bigShard := toBigShard(ga, bigType)
+	bigShard.maxLen = config.MaxBigDataLen
 
 	shards := make([]*shardProxy, 0, metadata.Shards)
 	shardOffset := metadata.ShardsOffset
 	for i := 0; i < int(config.Shards); i++ {
 		stType := (*shardType)(unsafe.Pointer(ga.Base() + uintptr(shardOffset)))
 		shr := toShard(ga, config.MemoryType, stType)
+		shr.maxLen = shardMaxLen
 		shards = append(shards, &shardProxy{
 			bigShard: bigShard,
 			shard:    shr,

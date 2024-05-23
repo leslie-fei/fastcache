@@ -109,6 +109,7 @@ type shard struct {
 	hashmap   *hashMap
 	container *lruAndFreeContainer
 	allocator Allocator
+	maxLen    uint32
 }
 
 func (s *shard) FindNode(hash uint64, key string) (prev *DataNode, node *DataNode, el *hashMapBucketElement) {
@@ -201,19 +202,25 @@ func (s *shard) allocOne(dataSize uint64) (*DataNode, error) {
 	if dataSize == 0 {
 		return nil, errors.New("data size is zero")
 	}
+	// 触发淘汰
+	onEvict := func(lruNode *listNode) {
+		el := (*hashMapBucketElement)(unsafe.Pointer(lruNode))
+		key := el.Key()
+		hash := xxHashString(key)
+		_ = s.Del(hash, key)
+	}
 	// 小数据块直接在shard分片中直接分配, 不需要加锁, 这里的allocator Locker是一个nopLocker
 	allocator := s.allocator
 	container := s.container
+	if s.hashmap.len >= s.maxLen {
+		// 超出最大容量了, 需要淘汰
+		if err := container.Evict(allocator, dataSize, onEvict); err != nil {
+			return nil, err
+		}
+	}
 	node, err := container.Alloc(allocator, dataSize)
 	if err != nil {
 		if errors.Is(err, ErrNoSpace) {
-			// 触发淘汰
-			onEvict := func(lruNode *listNode) {
-				el := (*hashMapBucketElement)(unsafe.Pointer(lruNode))
-				key := el.Key()
-				hash := xxHashString(key)
-				_ = s.Del(hash, key)
-			}
 			if err = container.Evict(allocator, dataSize, onEvict); err != nil {
 				return nil, err
 			}
