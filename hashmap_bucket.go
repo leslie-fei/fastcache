@@ -103,9 +103,9 @@ func (l *hashMapBucketElement) UpdateValue(value []byte) {
 
 func (l *hashMapBucketElement) Value() []byte {
 	valPtr := uintptr(unsafe.Pointer(l)) + sizeOfHashmapBucketElement + uintptr(l.keyLen)
-	var ss []byte
+	var ss = make([]byte, l.valLen)
 	sh := (*reflect.SliceHeader)(unsafe.Pointer(&ss))
-	sh.Data = valPtr
+	memmove(unsafe.Pointer(sh.Data), unsafe.Pointer(valPtr), uintptr(l.valLen))
 	sh.Len = int(l.valLen)
 	sh.Cap = sh.Len
 	return ss
