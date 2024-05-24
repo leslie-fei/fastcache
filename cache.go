@@ -51,7 +51,7 @@ func NewCache(size int, c *Config) (Cache, error) {
 	}
 
 	config := mergeConfig(size, c)
-	confHash, err := getConfigHash(config)
+	confHash, err := getConfigHash(size, config)
 	if err != nil {
 		return nil, err
 	}
@@ -95,6 +95,7 @@ func NewCache(size int, c *Config) (Cache, error) {
 	if reinitialize {
 		metadata.Reset()
 		metadata.Used = uint64(sizeOfMetadata)
+		metadata.ConfigHash = confHash
 		metadata.Magic = magic
 		metadata.TotalSize = mem.Size()
 		metadata.Shards = config.Shards
@@ -170,12 +171,13 @@ func mergeConfig(size int, c *Config) *Config {
 	return config
 }
 
-func getConfigHash(config *Config) (uint64, error) {
+func getConfigHash(size int, config *Config) (uint64, error) {
 	js, err := json.Marshal(config)
 	if err != nil {
 		return 0, err
 	}
-	return xxHashString(string(js)), nil
+	sourceStr := fmt.Sprintf("%d_%x", size, js)
+	return xxHashString(sourceStr), nil
 }
 
 func toBigShard(ga *globalAllocator, bigType *bigShardType) *shard {

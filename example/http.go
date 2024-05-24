@@ -1,38 +1,64 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"syscall"
 
 	"github.com/leslie-fei/fastcache"
+	"golang.org/x/sys/unix"
 )
 
 func runHTTPServer() {
-	cache, err := fastcache.NewCache(fastcache.GB, nil)
+	var lc = net.ListenConfig{
+		Control: func(network, address string, c syscall.RawConn) error {
+			var opErr error
+			if err := c.Control(func(fd uintptr) {
+				opErr = unix.SetsockoptInt(int(fd), unix.SOL_SOCKET, unix.SO_REUSEPORT, 1)
+			}); err != nil {
+				return err
+			}
+			return opErr
+		},
+	}
+
+	cache, err := fastcache.NewCache(fastcache.GB, &fastcache.Config{
+		MemoryType: fastcache.SHM,
+		MemoryKey:  "/tmp/ExampleRunHttpServer",
+	})
 	if err != nil {
 		panic(err)
 	}
-	srv := http.NewServeMux()
-	srv.Handle("/get", http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+
+	http.HandleFunc("/get", func(writer http.ResponseWriter, request *http.Request) {
 		key := request.URL.Query().Get("k")
 		v, err := cache.Get(key)
 		handleResponse(writer, v, err)
-	}))
-	srv.Handle("/set", http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	})
+
+	http.HandleFunc("/set", func(writer http.ResponseWriter, request *http.Request) {
 		key := request.URL.Query().Get("k")
 		value := request.URL.Query().Get("v")
 		err := cache.Set(key, []byte(value))
 		handleResponse(writer, nil, err)
-	}))
-	srv.Handle("/del", http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+	})
+
+	http.HandleFunc("/del", func(writer http.ResponseWriter, request *http.Request) {
 		key := request.URL.Query().Get("k")
 		err := cache.Delete(key)
 		handleResponse(writer, nil, err)
-	}))
+	})
 
 	addr := ":8080"
-	if err = http.ListenAndServe(addr, srv); err != nil {
+	l, err := lc.Listen(context.Background(), "tcp", addr)
+	if err != nil {
+		panic(err)
+	}
+	httpServer := &http.Server{}
+	if err = httpServer.Serve(l); err != nil {
 		panic(err)
 	}
 

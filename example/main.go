@@ -13,8 +13,10 @@ import (
 
 func main() {
 	// 启动一个httpServer用来做测试
-	go runHTTPServer()
+	runHTTPServer()
+}
 
+func runConsole() {
 	var size int
 	var key string
 
@@ -26,10 +28,8 @@ func main() {
 	size = size * fastcache.MB
 
 	cache, err := fastcache.NewCache(128*fastcache.MB, &fastcache.Config{
-		MemoryType:    fastcache.SHM,
-		MemoryKey:     "/tmp/ExampleSharedMemory",
-		Shards:        1,
-		MaxElementLen: 20,
+		MemoryType: fastcache.SHM,
+		MemoryKey:  "/tmp/ExampleSharedMemory",
 	})
 	if err != nil {
 		panic(err)
