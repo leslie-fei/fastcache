@@ -2,6 +2,7 @@ package fastcache
 
 type Metadata struct {
 	Magic          uint64
+	ConfigHash     uint64
 	TotalSize      uint64
 	Used           uint64
 	Shards         uint32

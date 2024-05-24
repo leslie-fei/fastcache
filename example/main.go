@@ -12,6 +12,9 @@ import (
 )
 
 func main() {
+	// 启动一个httpServer用来做测试
+	go runHTTPServer()
+
 	var size int
 	var key string
 

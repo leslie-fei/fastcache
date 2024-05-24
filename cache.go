@@ -1,6 +1,7 @@
 package fastcache
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math"
@@ -50,6 +51,10 @@ func NewCache(size int, c *Config) (Cache, error) {
 	}
 
 	config := mergeConfig(size, c)
+	confHash, err := getConfigHash(config)
+	if err != nil {
+		return nil, err
+	}
 
 	var mem Memory
 	switch config.MemoryType {
@@ -82,8 +87,8 @@ func NewCache(size int, c *Config) (Cache, error) {
 	shardMaxLen := uint32(float64(config.MaxElementLen) / float64(config.Shards))
 	bucketLen := math.Ceil(float64(shardMaxLen)/float64(perHashmapBucketLength)) / 0.75
 	bigDataIndex := dataSizeToIndex(uint64(config.BigDataSize))
-	// if magic not equals or memory data size changed should init memory
-	reinitialize := metadata.Magic != magic || metadata.TotalSize != mem.Size()
+
+	reinitialize := metadata.Magic != magic || metadata.ConfigHash != confHash
 	if reinitialize {
 		metadata.Reset()
 		metadata.Used = uint64(sizeOfMetadata)
@@ -160,6 +165,14 @@ func mergeConfig(size int, c *Config) *Config {
 		}
 	}
 	return config
+}
+
+func getConfigHash(config *Config) (uint64, error) {
+	js, err := json.Marshal(config)
+	if err != nil {
+		return 0, err
+	}
+	return xxHashString(string(js)), nil
 }
 
 func toBigShard(ga *globalAllocator, bigType *bigShardType) *shard {
