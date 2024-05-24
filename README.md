@@ -36,28 +36,33 @@ goos: windows
 goarch: amd64
 pkg: github.com/leslie-fei/fastcache/benchmark
 cpu: Intel(R) Core(TM) i7-7700K CPU @ 4.20GHz
+BenchmarkTemporary
+BenchmarkTemporary-8             	73428962	        15.23 ns/op
 BenchmarkFastCache_Set
-BenchmarkFastCache_Set-8         	27009982	        43.21 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFastCache_Set-8         	14042593	        93.64 ns/op	       0 B/op	       0 allocs/op
 BenchmarkFastCache_Get
-BenchmarkFastCache_Get-8         	44038387	        30.38 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFastCache_Get-8         	 7770978	       138.8 ns/op	     540 B/op	       0 allocs/op
 BenchmarkFastCache_SetAndGet
-BenchmarkFastCache_SetAndGet-8   	31507309	        35.51 ns/op	       0 B/op	       0 allocs/op
+BenchmarkFastCache_SetAndGet-8   	 9913168	       108.5 ns/op	     474 B/op	       0 allocs/op
 BenchmarkBigCache_Set
-BenchmarkBigCache_Set-8          	 5767413	       193.7 ns/op	     702 B/op	       0 allocs/op
+BenchmarkBigCache_Set-8          	 3825472	       324.2 ns/op	    1716 B/op	       0 allocs/op
 BenchmarkBigCache_Get
-BenchmarkBigCache_Get-8          	21779452	        66.17 ns/op	     255 B/op	       2 allocs/op
+BenchmarkBigCache_Get-8          	 9835846	       119.8 ns/op	     556 B/op	       1 allocs/op
 BenchmarkBigCache_SetAndGet
-BenchmarkBigCache_SetAndGet-8    	18181873	        61.45 ns/op	     296 B/op	       1 allocs/op
+BenchmarkBigCache_SetAndGet-8    	15019317	       142.6 ns/op	     612 B/op	       1 allocs/op
 BenchmarkRistretto_Set
-BenchmarkRistretto_Set-8         	 2562235	       515.3 ns/op	     122 B/op	       3 allocs/op
+BenchmarkRistretto_Set-8         	10617138	       202.6 ns/op	     144 B/op	       3 allocs/op
 BenchmarkRistretto_Get
-BenchmarkRistretto_Get-8         	31602318	        34.99 ns/op	      17 B/op	       1 allocs/op
+BenchmarkRistretto_Get-8         	26066668	        57.14 ns/op	      19 B/op	       1 allocs/op
 BenchmarkRistretto_SetAndGet
-BenchmarkRistretto_SetAndGet-8   	17018234	        74.14 ns/op	      35 B/op	       1 allocs/op
+BenchmarkRistretto_SetAndGet-8   	20932004	        53.77 ns/op	      34 B/op	       1 allocs/op
 BenchmarkTheine_Set
-BenchmarkTheine_Set-8            	 5171096	       272.7 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTheine_Set-8            	 3182510	       507.1 ns/op	       0 B/op	       0 allocs/op
 BenchmarkTheine_Get
-BenchmarkTheine_Get-8            	35294844	        31.94 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTheine_Get-8            	31701247	        32.01 ns/op	       0 B/op	       0 allocs/op
 BenchmarkTheine_SetAndGet
-BenchmarkTheine_SetAndGet-8      	15596588	        76.40 ns/op	       0 B/op	       0 allocs/op
+BenchmarkTheine_SetAndGet-8      	13708880	       104.2 ns/op	       1 B/op	       0 allocs/op
+PASS
+
+Process finished with the exit code 0
 ```
