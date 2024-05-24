@@ -88,7 +88,10 @@ func NewCache(size int, c *Config) (Cache, error) {
 	bucketLen := math.Ceil(float64(shardMaxLen)/float64(perHashmapBucketLength)) / 0.75
 	bigDataIndex := dataSizeToIndex(uint64(config.BigDataSize))
 
-	reinitialize := metadata.Magic != magic || metadata.ConfigHash != confHash
+	if metadata.Magic == magic && confHash != metadata.ConfigHash {
+		return nil, errors.New("config changed should remove shared memory and restart")
+	}
+	reinitialize := metadata.Magic != magic
 	if reinitialize {
 		metadata.Reset()
 		metadata.Used = uint64(sizeOfMetadata)
