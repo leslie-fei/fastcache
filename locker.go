@@ -8,13 +8,11 @@ import (
 
 type Locker interface {
 	sync.Locker
-	RLock()
-	RUnlock()
 	Reset()
 }
 
 type threadLocker struct {
-	sync.RWMutex
+	sync.Mutex
 }
 
 func (l *threadLocker) Reset() {
@@ -39,15 +37,6 @@ func (l *processLocker) Unlock() {
 	}
 }
 
-func (l *processLocker) RLock() {
-	// TODO read lock
-	l.Lock()
-}
-
-func (l *processLocker) RUnlock() {
-	l.Unlock()
-}
-
 func (l *processLocker) Reset() {
 	l.write = 0
 	l.read = 0
@@ -62,12 +51,6 @@ func (n *nonLocker) Lock() {
 }
 
 func (n *nonLocker) Unlock() {
-}
-
-func (n *nonLocker) RLock() {
-}
-
-func (n *nonLocker) RUnlock() {
 }
 
 func (n *nonLocker) Reset() {

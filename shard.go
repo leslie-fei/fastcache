@@ -50,13 +50,13 @@ func (s *shardProxy) Set(hash uint64, key string, value []byte) error {
 
 func (s *shardProxy) Get(hash uint64, key string) ([]byte, error) {
 	locker := s.shard.Locker()
-	locker.RLock()
+	locker.Lock()
 	v, err := s.shard.Get(hash, key)
-	locker.RUnlock()
+	locker.Unlock()
 	if err != nil && errors.Is(err, ErrNotFound) {
 		bigLocker := s.bigShard.Locker()
-		bigLocker.RLock()
-		defer bigLocker.RUnlock()
+		bigLocker.Lock()
+		defer bigLocker.Unlock()
 		return s.bigShard.Get(hash, key)
 	}
 	return v, err
@@ -64,13 +64,13 @@ func (s *shardProxy) Get(hash uint64, key string) ([]byte, error) {
 
 func (s *shardProxy) Peek(hash uint64, key string) ([]byte, error) {
 	locker := s.shard.Locker()
-	locker.RLock()
+	locker.Lock()
 	v, err := s.shard.Peek(hash, key)
-	locker.RUnlock()
+	locker.Unlock()
 	if err != nil && errors.Is(err, ErrNotFound) {
 		bigLocker := s.bigShard.Locker()
-		bigLocker.RLock()
-		defer bigLocker.RUnlock()
+		bigLocker.Lock()
+		defer bigLocker.Unlock()
 		return s.bigShard.Peek(hash, key)
 	}
 	return v, err
