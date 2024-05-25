@@ -213,12 +213,12 @@ func (s *shard) allocOne(dataSize uint64) (*DataNode, error) {
 	// 小数据块直接在shard分片中直接分配, 不需要加锁, 这里的allocator Locker是一个nopLocker
 	allocator := s.allocator
 	container := s.container
-	if s.hashmap.len >= s.maxLen {
-		// 超出最大容量了, 需要淘汰
-		if err := container.Evict(allocator, dataSize, onEvict); err != nil {
-			return nil, err
-		}
-	}
+	//if s.hashmap.len >= s.maxLen {
+	//	// 超出最大容量了, 需要淘汰
+	//	if err := container.Evict(allocator, dataSize, onEvict); err != nil {
+	//		return nil, err
+	//	}
+	//}
 	node, err := container.Alloc(allocator, dataSize)
 	if err != nil {
 		if errors.Is(err, ErrNoSpace) {

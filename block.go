@@ -57,6 +57,34 @@ func (b *lruAndFreeContainer) Len() int {
 	return len(b.freeLists)
 }
 
+// PreAlloc 预先分配到free list里面
+func (b *lruAndFreeContainer) PreAlloc(allocator Allocator, limitIndex int) error {
+	for i := 0; i < limitIndex; i++ {
+		freeList := &b.freeLists[i]
+		fixedSize := freeList.Size
+		nodeSize := uint64(sizeOfDataNode) + fixedSize
+		allocSize := nodeSize
+		ptr, offset, err := allocator.Alloc(allocSize)
+		if err != nil {
+			return err
+		}
+		node := (*DataNode)(ptr)
+		node.Reset()
+		node.FreeBlockIndex = freeList.Index
+		head := freeList.First(allocator.Base())
+		if head == nil {
+			freeList.Head = offset
+		} else {
+			// 头插, 把当前的head, 前面插入node节点
+			next := head
+			node.Next = next.Offset(allocator.Base())
+			head = node
+		}
+		freeList.Len++
+	}
+	return nil
+}
+
 func (b *lruAndFreeContainer) Alloc(allocator Allocator, dataSize uint64) (*DataNode, error) {
 	freeList, err := b.Get(dataSize)
 	if err != nil {

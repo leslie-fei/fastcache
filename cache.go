@@ -115,7 +115,7 @@ func NewCache(size int, c *Config) (Cache, error) {
 		// shards
 		metadata.ShardsOffset = ga.Offset()
 		for i := 0; i < int(metadata.Shards); i++ {
-			if _, err = allocShard(ga, config.MemoryType, uint32(bucketLen), config.ShardPerAllocSize); err != nil {
+			if _, err = allocShard(ga, config.MemoryType, uint32(bucketLen), config.ShardPerAllocSize, bigDataIndex); err != nil {
 				return nil, err
 			}
 		}
@@ -279,7 +279,7 @@ func allocLRUAndFreeContainer(ga *globalAllocator) (offset uint64, err error) {
 	return containerOffset, nil
 }
 
-func allocShard(ga *globalAllocator, memType MemoryType, bucketLen uint32, perAllocSize uint64) (uint64, error) {
+func allocShard(ga *globalAllocator, memType MemoryType, bucketLen uint32, perAllocSize uint64, bigDataIndex int) (uint64, error) {
 	// shardTypeHead + locker + hashmap + lruAndFreeContainer
 	begin := ga.Offset()
 	ptr, offset, err := ga.Alloc(uint64(sizeOfShardType))
@@ -300,6 +300,12 @@ func allocShard(ga *globalAllocator, memType MemoryType, bucketLen uint32, perAl
 	typ.HashMapOffset = hashOffset
 
 	containerOffset, err := allocLRUAndFreeContainer(ga)
+	if err != nil {
+		return 0, err
+	}
+	// 初始化最小大小的FreeList
+	container := (*lruAndFreeContainer)(unsafe.Pointer(ga.Base() + uintptr(containerOffset)))
+	err = container.PreAlloc(ga, bigDataIndex)
 	if err != nil {
 		return 0, err
 	}
