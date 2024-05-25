@@ -83,7 +83,7 @@ func processBatch(start int, end int, cache *fastcache.Cache) {
 	wg.Wait()
 }
 
-func main() {
+func runTester() {
 	var maxMemoryMB int
 	flag.IntVar(&maxMemoryMB, "m", 1024, "memory limit in MB (default 1024)")
 	flag.Parse()
