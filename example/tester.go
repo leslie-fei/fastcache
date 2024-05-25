@@ -46,7 +46,7 @@ func worker(id int, jobs <-chan int, wg *sync.WaitGroup, cache *fastcache.Cache)
 		value := generateRandomValue()
 		err := (*cache).Set((key), []byte(value))
 		if err != nil {
-			panic(err)
+			log.Printf("Error setting value in cache: %v\n", err)
 		}
 
 		retrievedValue, _ := (*cache).Peek((key))
@@ -94,7 +94,7 @@ func runTester() {
 		MemoryType:    fastcache.MMAP,
 		MemoryKey:     "/tmp/exampleSharedMemory",
 		Shards:        128,
-		MaxElementLen: batchSize * 10,
+		MaxElementLen: batchSize * 30,
 	})
 
 	//    cache := fastcache.New(maxMemoryMB * fastcache.MB)

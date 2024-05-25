@@ -207,8 +207,7 @@ func (s *shard) allocOne(dataSize uint64) (*DataNode, error) {
 		el := (*hashMapBucketElement)(unsafe.Pointer(lruNode))
 		key := el.Key()
 		hash := xxHashString(key)
-		prev, node, _ := s.hashmap.FindNode(s.allocator.Base(), hash, key)
-		_ = s.hashmap.Del(s.allocator.Base(), hash, prev, node)
+		_ = s.Del(hash, key)
 	}
 	// 小数据块直接在shard分片中直接分配, 不需要加锁, 这里的allocator Locker是一个nopLocker
 	allocator := s.allocator
