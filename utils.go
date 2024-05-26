@@ -1,6 +1,9 @@
 package fastcache
 
-import "unsafe"
+import (
+	"math/big"
+	"unsafe"
+)
 
 // NodeTo node data convert to *T
 func NodeTo[T any](node *DataNode) *T {
@@ -13,4 +16,13 @@ func ToDataNode(base uintptr, offset uint64) *DataNode {
 		return nil
 	}
 	return (*DataNode)(unsafe.Pointer(base + uintptr(offset)))
+}
+
+func findNextPrime(n int) int {
+	for {
+		if big.NewInt(int64(n)).ProbablyPrime(0) {
+			return n
+		}
+		n++
+	}
 }
