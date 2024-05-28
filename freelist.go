@@ -18,7 +18,7 @@ func (f *freeStore) init(all *allocator) error {
 		fl.index = uint8(i)
 		fl.size = 1 << i
 		// 小于1KB的数据, 预分配
-		if fl.size <= KB {
+		if fl.size <= 16*KB {
 			if err := fl.alloc(all, 10); err != nil {
 				return err
 			}

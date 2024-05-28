@@ -149,7 +149,7 @@ func (s *shard) Set(all *allocator, hash uint64, key string, value []byte) error
 	hm := s.hashmap(all)
 	prev, node := hm.find(all, hash, key)
 	if node == nil {
-		node, err = s.newElement(all, key, value)
+		node, err = s.newElement(all, hash, key, value)
 		if err != nil {
 			return err
 		}
@@ -162,7 +162,7 @@ func (s *shard) Set(all *allocator, hash uint64, key string, value []byte) error
 		if index > node.freeIndex {
 			// Delete old node and new one to replace
 			old := node
-			if node, err = s.newElement(all, key, value); err != nil {
+			if node, err = s.newElement(all, hash, key, value); err != nil {
 				return err
 			}
 			if err = s.del(all, hash, prev, old); err != nil {
@@ -203,7 +203,7 @@ func (s *shard) del(all *allocator, hash uint64, prev *dataNode, node *dataNode)
 	return nil
 }
 
-func (s *shard) newElement(all *allocator, key string, value []byte) (node *dataNode, err error) {
+func (s *shard) newElement(all *allocator, hash uint64, key string, value []byte) (node *dataNode, err error) {
 	fs := s.freeStore(all)
 	elSize := hashmapElementSize(key, value)
 
@@ -239,6 +239,7 @@ func (s *shard) newElement(all *allocator, key string, value []byte) (node *data
 
 	el := nodeTo[hashmapBucketElement](node)
 	el.reset()
+	el.hash = hash
 	el.updateKey(key)
 	el.updateValue(value)
 	return node, nil

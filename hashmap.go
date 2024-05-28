@@ -36,7 +36,7 @@ func (m *hashmap) init(all *allocator, bucketLen uint32) error {
 
 func (m *hashmap) find(all *allocator, hash uint64, key string) (prev *dataNode, node *dataNode) {
 	bucket := m.byHash(all, hash)
-	return bucket.find(all, key)
+	return bucket.find(all, hash, key)
 }
 
 func (m *hashmap) byHash(all *allocator, hash uint64) *hashmapBucket {
@@ -100,7 +100,7 @@ func (l *hashmapBucket) reset() {
 	*l = hashmapBucket{}
 }
 
-func (l *hashmapBucket) find(all *allocator, key string) (prev *dataNode, node *dataNode) {
+func (l *hashmapBucket) find(all *allocator, hash uint64, key string) (prev *dataNode, node *dataNode) {
 	if l.len == 0 {
 		return nil, nil
 	}
@@ -109,7 +109,7 @@ func (l *hashmapBucket) find(all *allocator, key string) (prev *dataNode, node *
 	for i := 0; i < int(l.len); i++ {
 		node = toDataNode(all, offset)
 		el := nodeTo[hashmapBucketElement](node)
-		if el.equal(key) {
+		if el.hash == hash && el.equal(key) {
 			return
 		}
 		prev = node
@@ -123,6 +123,7 @@ func (l *hashmapBucket) find(all *allocator, key string) (prev *dataNode, node *
 type hashmapBucketElement struct {
 	keyLen uint32 // key length
 	valLen uint32 // val length
+	hash   uint64
 }
 
 func (el *hashmapBucketElement) reset() {
