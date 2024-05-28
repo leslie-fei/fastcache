@@ -1,84 +1,54 @@
 package fastcache
 
 import (
+	"errors"
+	"fmt"
+	"sync"
 	"testing"
-
-	"github.com/leslie-fei/fastcache/gomemory"
-	"github.com/stretchr/testify/assert"
 )
 
-var mockAllocator = newMockAllocator(uint64(128 * MB))
-
-func newMockAllocator(size uint64) Allocator {
-	mem := gomemory.NewMemory(size)
-	_ = mem.Attach()
-	metadata := &Metadata{
-		TotalSize: size,
+func TestCache(t *testing.T) {
+	c, err := NewCache(64*MB, &Config{
+		MemoryType: MMAP,
+		MemoryKey:  "./cacheMMap.test",
+	})
+	if err != nil {
+		panic(err)
 	}
-	return &globalAllocator{mem: mem, metadata: metadata, locker: &threadLocker{}}
-}
 
-var testSize = GB
+	var wg sync.WaitGroup
+	n := 1024
+	wg.Add(n)
+	for i := 0; i < n; i++ {
+		i := i
+		go func() {
+			defer wg.Done()
+			key := fmt.Sprintf("key_%d", i)
+			err = c.Set(key, []byte(key))
+			if err != nil {
+				panic(err)
+			}
 
-func TestCache_SetGetDelete(t *testing.T) {
-	cache, err := NewCache(testSize, &Config{
-		Shards:     256,
-		MemoryType: GO,
-		MemoryKey:  "",
-	})
-	assert.NoError(t, err)
+			v, err := c.Get(key)
+			if err != nil {
+				panic(err)
+			}
 
-	// Test Set
-	err = cache.Set("key1", []byte("value1"))
-	assert.NoError(t, err)
+			if string(v) != key {
+				panic(fmt.Errorf("Get key: %s value: %s != %s", key, v, key))
+			}
 
-	// Test Get
-	value, err := cache.Get("key1")
-	assert.NoError(t, err)
-	assert.Equal(t, []byte("value1"), value)
+			err = c.Delete(key)
+			if err != nil {
+				panic(err)
+			}
 
-	// Test Delete
-	err = cache.Delete("key1")
-	assert.NoError(t, err)
+			_, err = c.Get(key)
+			if err == nil || !errors.Is(err, ErrNotFound) {
+				panic("expect ErrNotFound")
+			}
+		}()
+	}
 
-	// Test Get after Delete
-	value, err = cache.Get("key1")
-	assert.Error(t, err)
-	assert.Nil(t, value)
-}
-
-func TestCache_MultiProcess(t *testing.T) {
-	cache, err := NewCache(testSize, &Config{
-		Shards:     256,
-		MemoryType: SHM,
-		MemoryKey:  "/tmp/fastcache_test",
-	})
-	assert.NoError(t, err)
-
-	// Test Set
-	err = cache.Set("key1", []byte("value1"))
-	assert.NoError(t, err)
-
-	// Test Get
-	value, err := cache.Get("key1")
-	assert.NoError(t, err)
-	assert.Equal(t, []byte("value1"), value)
-}
-
-func TestCache_Errors(t *testing.T) {
-	cache, err := NewCache(testSize, &Config{
-		Shards:     256,
-		MemoryType: GO,
-		MemoryKey:  "",
-	})
-	assert.NoError(t, err)
-
-	// Test Get non-existent key
-	value, err := cache.Get("non_existent")
-	assert.Error(t, err)
-	assert.Nil(t, value)
-
-	// Test Delete non-existent key
-	err = cache.Delete("non_existent")
-	assert.Error(t, err)
+	wg.Wait()
 }

@@ -28,7 +28,7 @@ type Memory interface {
 	Ptr() unsafe.Pointer
 	// Size memory total size
 	Size() uint64
-	// PtrOffset offset get ptr
+	// PtrOffset offset Get ptr
 	PtrOffset(offset uint64) unsafe.Pointer
 	// Travel memory
 	Travel(skipOffset uint64, fn func(ptr unsafe.Pointer, size uint64) uint64)

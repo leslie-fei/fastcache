@@ -4,24 +4,19 @@ import (
 	"runtime"
 	"sync"
 	"sync/atomic"
+	"unsafe"
 )
+
+var sizeOfProcessLocker = unsafe.Sizeof(processLocker{})
 
 type Locker interface {
 	sync.Locker
-	Reset()
-}
-
-type threadLocker struct {
-	sync.Mutex
-}
-
-func (l *threadLocker) Reset() {
-	// ignore
 }
 
 type processLocker struct {
-	write int32
-	read  int32
+	write  int32
+	read   int32
+	locker sync.Mutex
 }
 
 func (l *processLocker) Lock() {
@@ -42,16 +37,10 @@ func (l *processLocker) Reset() {
 	l.read = 0
 }
 
-var nopLocker = &nonLocker{}
+type nopLocker struct{}
 
-type nonLocker struct {
+func (n *nopLocker) Lock() {
 }
 
-func (n *nonLocker) Lock() {
-}
-
-func (n *nonLocker) Unlock() {
-}
-
-func (n *nonLocker) Reset() {
+func (n *nopLocker) Unlock() {
 }

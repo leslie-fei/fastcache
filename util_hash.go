@@ -51,7 +51,7 @@ var xxHashString = func(key string) uint64 {
 	bh := reflect.SliceHeader{
 		Data: sh.Data,
 		Len:  sh.Len,
-		Cap:  sh.Len, // cap needs to be set, otherwise xxhash fails on ARM Macs
+		Cap:  sh.Len, // cap needs to be Set, otherwise xxhash fails on ARM Macs
 	}
 
 	b := *(*[]byte)(unsafe.Pointer(&bh))

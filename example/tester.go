@@ -1,11 +1,9 @@
 package main
 
 import (
-	"flag"
 	"fmt"
 	"log"
 	"math/rand"
-	"runtime"
 	"sync"
 	"time"
 
@@ -13,25 +11,16 @@ import (
 )
 
 const (
-	numEntries = 1 << 20 // Total number of entries (example: 1 million)
-	keySize    = 32
-	valueSize  = 1024
-	numWorkers = 100 // Number of worker goroutines
+	keyMaxSize   = 32
+	valueMaxSize = 1024
+	numWorkers   = 1 // Number of worker goroutines
+	//batchSize    = 100 // Number of operations per batch
+	maxElements = 100000 // i cant make it more than 1 billion, will show no memory panic error
 )
 
 var (
-	benchKeys = make([]string, numEntries)
-	benchVals = make([][]byte, numEntries)
 	strSource = []byte("1234567890qwertyuiopasdfghjklzxcvbnm")
 )
-
-func init() {
-	for i := 0; i < numEntries; i++ {
-		benchKeys[i] = getRandStr(keySize)
-		benchVals[i] = make([]byte, valueSize)
-		rand.Read(benchVals[i])
-	}
-}
 
 func getRandStr(length int) string {
 	b := make([]byte, length)
@@ -41,24 +30,31 @@ func getRandStr(length int) string {
 	return string(b)
 }
 
-func getIndex(i int) int {
-	return i & (numEntries - 1)
+func getRandBytes(length int) []byte {
+	b := make([]byte, length)
+	rand.Read(b)
+	return b
 }
 
-func worker(id int, jobs <-chan int, wg *sync.WaitGroup, cache *fastcache.Cache, requestCount *int64, mu *sync.Mutex) {
-	defer wg.Done()
-	for i := range jobs {
-		index := getIndex(i)
-		key := benchKeys[index]
-		value := benchVals[index]
+func worker(id int, cache *fastcache.Cache, requestCount *int64, mu *sync.Mutex) {
+	for {
+		keySize := rand.Intn(keyMaxSize) + 1
+		valueSize := rand.Intn(valueMaxSize) + 1
+		key := getRandStr(keySize)
+		value := getRandBytes(valueSize)
 
 		// Set
-		(*cache).Set((key), value)
+		err := (*cache).Set((key), value)
+		if err != nil {
+			log.Fatal(err)
+		}
 
 		// Get
-		retrievedValue, _ := (*cache).Get((key))
-
-		// Verify
+		retrievedValue, err := (*cache).Get((key))
+		if err != nil {
+			log.Fatal(err)
+		}
+		//Verify
 		if !equal(retrievedValue, value) {
 			log.Printf("Mismatch: Key %s, Expected Value: %x, Retrieved Value: %x\n", key, value, retrievedValue)
 		}
@@ -81,36 +77,13 @@ func equal(a, b []byte) bool {
 	return true
 }
 
-func processBatch(cache *fastcache.Cache, requestCount *int64, mu *sync.Mutex) {
-	var wg sync.WaitGroup
-	jobs := make(chan int, numEntries)
-
-	// Start workers
-	for w := 0; w < numWorkers; w++ {
-		wg.Add(1)
-		go worker(w, jobs, &wg, cache, requestCount, mu)
-	}
-
-	// Send jobs
-	for i := 0; i < numEntries; i++ {
-		jobs <- i
-	}
-	close(jobs)
-
-	// Wait for all workers to finish
-	wg.Wait()
-}
-
 func runTester() {
-	var maxMemoryMB int
-	flag.IntVar(&maxMemoryMB, "m", 1024, "memory limit in MB (default 1024)")
-	flag.Parse()
-
-	cache, err := fastcache.NewCache(5*fastcache.GB, &fastcache.Config{
-		MemoryType:    fastcache.MMAP,
-		MemoryKey:     "/tmp/exampleSharedMemory",
-		Shards:        uint32(runtime.NumCPU() * 4),
-		MaxElementLen: numEntries,
+	cache, err := fastcache.NewCache(24*fastcache.MB, &fastcache.Config{
+		MemoryType: fastcache.GO,
+		MemoryKey:  "./exampleSharedMemory.test",
+		//Shards:        uint32(runtime.NumCPU() * 4),
+		Shards:        1,
+		MaxElementLen: maxElements,
 	})
 
 	if err != nil {
@@ -130,11 +103,17 @@ func runTester() {
 		}
 	}()
 
-	startTime := time.Now()
+	var wg sync.WaitGroup
 
-	processBatch(&cache, &requestCount, &mu)
+	// Start workers
+	for w := 0; w < numWorkers; w++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			worker(id, &cache, &requestCount, &mu)
+		}(w)
+	}
 
+	wg.Wait()
 	ticker.Stop()
-	elapsedTime := time.Since(startTime)
-	fmt.Printf("Time taken to insert and verify %d entries: %s\n", numEntries, elapsedTime)
 }

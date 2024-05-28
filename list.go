@@ -11,7 +11,6 @@ var (
 type listNode struct {
 	prev uint64 // prev listNode
 	next uint64 // next listNode
-	//dataNode uint64 // current DataNode offset
 }
 
 func (ln *listNode) SetPrev(base uintptr, node *listNode) {
