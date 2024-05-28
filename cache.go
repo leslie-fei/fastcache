@@ -3,6 +3,7 @@ package fastcache
 import (
 	"errors"
 	"fmt"
+	"io"
 	"unsafe"
 
 	"github.com/leslie-fei/fastcache/gom"
@@ -16,8 +17,10 @@ const (
 
 type Cache interface {
 	Get(key string) ([]byte, error)
+	GetWithBuffer(key string, buffer io.Writer) error
 	Set(key string, value []byte) error
 	Peek(key string) ([]byte, error)
+	PeekWithBuffer(key string, buffer io.Writer) error
 	Delete(key string) error
 }
 
@@ -108,6 +111,12 @@ func (c *cache) Peek(key string) ([]byte, error) {
 	return shr.Peek(c.allocator, hash, key)
 }
 
+func (c *cache) PeekWithBuffer(key string, buffer io.Writer) error {
+	hash := xxHashString(key)
+	shr := c.shard(hash)
+	return shr.PeekWithBuffer(c.allocator, hash, key, buffer)
+}
+
 func (c *cache) Delete(key string) error {
 	hash := xxHashString(key)
 	shr := c.shard(hash)
@@ -124,6 +133,12 @@ func (c *cache) Get(key string) ([]byte, error) {
 	hash := xxHashString(key)
 	shr := c.shard(hash)
 	return shr.Get(c.allocator, hash, key)
+}
+
+func (c *cache) GetWithBuffer(key string, buffer io.Writer) error {
+	hash := xxHashString(key)
+	shr := c.shard(hash)
+	return shr.GetWithBuffer(c.allocator, hash, key, buffer)
 }
 
 func (c *cache) shard(hash uint64) *shard {

@@ -2,6 +2,7 @@ package fastcache
 
 import (
 	"errors"
+	"io"
 	"math"
 	"unsafe"
 )
@@ -122,6 +123,27 @@ func (s *shard) Get(all *allocator, hash uint64, key string) ([]byte, error) {
 	return value, nil
 }
 
+func (s *shard) GetWithBuffer(all *allocator, hash uint64, key string, buffer io.Writer) error {
+	locker := s.locker(all)
+	locker.Lock()
+	defer locker.Unlock()
+
+	hm := s.hashmap(all)
+	_, node := hm.find(all, hash, key)
+	if node == nil {
+		return ErrNotFound
+	}
+
+	el := nodeTo[hashmapBucketElement](node)
+	if err := el.valueWithBuffer(buffer); err != nil {
+		return err
+	}
+
+	ls := s.lruStore(all)
+	ls.moveToFront(all, node.freeIndex, el.lruNode())
+	return nil
+}
+
 func (s *shard) Peek(all *allocator, hash uint64, key string) ([]byte, error) {
 	locker := s.locker(all)
 	locker.Lock()
@@ -137,6 +159,21 @@ func (s *shard) Peek(all *allocator, hash uint64, key string) ([]byte, error) {
 	value := el.value()
 
 	return value, nil
+}
+
+func (s *shard) PeekWithBuffer(all *allocator, hash uint64, key string, buffer io.Writer) error {
+	locker := s.locker(all)
+	locker.Lock()
+	defer locker.Unlock()
+
+	hm := s.hashmap(all)
+	_, node := hm.find(all, hash, key)
+	if node == nil {
+		return ErrNotFound
+	}
+
+	el := nodeTo[hashmapBucketElement](node)
+	return el.valueWithBuffer(buffer)
 }
 
 func (s *shard) Set(all *allocator, hash uint64, key string, value []byte) error {

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/hex"
 	"flag"
 	"fmt"
@@ -67,6 +68,12 @@ func generateRandomValue() string {
 }
 */
 
+var bufferPool = &sync.Pool{
+	New: func() interface{} {
+		return bytes.NewBuffer(make([]byte, 0, 1024))
+	},
+}
+
 func worker(id int, jobs <-chan int, wg *sync.WaitGroup, cache *fastcache.Cache) {
 	defer wg.Done()
 
@@ -84,11 +91,15 @@ func worker(id int, jobs <-chan int, wg *sync.WaitGroup, cache *fastcache.Cache)
 			panic(err)
 		}
 
-		retrievedValue, _ := (*cache).Peek(keyStr)
+		buffer := bufferPool.Get().(*bytes.Buffer)
+		buffer.Reset()
+		_ = (*cache).PeekWithBuffer(keyStr, buffer)
+		retrievedValue := buffer.Bytes()
 		if string(retrievedValue) != valueStr {
 			log.Fatalf("Mismatch: Key %s, Expected Value: %s, Retrieved Value: %s\n",
 				keyStr, valueStr, string(retrievedValue))
 		}
+		bufferPool.Put(buffer)
 
 		mu.Lock()
 		requestCount += 2 // 1 SET + 1 GET
@@ -134,7 +145,7 @@ func main() {
 	flag.Parse()
 
 	cache, _ := fastcache.NewCache(20*fastcache.GB, &fastcache.Config{
-		MemoryType:    fastcache.GO,
+		MemoryType:    fastcache.MMAP,
 		MemoryKey:     "/dev/shm/exampleSharedMemory",
 		Shards:        128,
 		MaxElementLen: batchSize * 10,

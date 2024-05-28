@@ -1,6 +1,7 @@
 package fastcache
 
 import (
+	"io"
 	"reflect"
 	"unsafe"
 )
@@ -185,6 +186,17 @@ func (el *hashmapBucketElement) valPtr() unsafe.Pointer {
 	//head + lruNode + key + value
 	ptr := uintptr(el.keyPtr()) + uintptr(el.keyLen)
 	return unsafe.Pointer(ptr)
+}
+
+func (el *hashmapBucketElement) valueWithBuffer(buffer io.Writer) error {
+	var ss []byte
+	sh := (*reflect.SliceHeader)(unsafe.Pointer(&ss))
+	sh.Data = uintptr(el.valPtr())
+	sh.Len = int(el.valLen)
+	sh.Cap = sh.Len
+
+	_, err := buffer.Write(ss)
+	return err
 }
 
 func hashmapElementSize(key string, value []byte) uint32 {

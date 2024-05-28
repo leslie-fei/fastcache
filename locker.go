@@ -14,9 +14,8 @@ type Locker interface {
 }
 
 type processLocker struct {
-	write  int32
-	read   int32
-	locker sync.Mutex
+	write int32
+	read  int32
 }
 
 func (l *processLocker) Lock() {

@@ -1,6 +1,7 @@
 package benchmark
 
 import (
+	"bytes"
 	"context"
 	"math/rand"
 	_ "net/http/pprof"
@@ -143,6 +144,12 @@ func BenchmarkFastCache_Set(b *testing.B) {
 	})
 }
 
+var bufferPool = &sync.Pool{
+	New: func() interface{} {
+		return bytes.NewBuffer(make([]byte, 0, 1024))
+	},
+}
+
 func BenchmarkFastCache_Get(b *testing.B) {
 	var mc = newFastCache()
 	for i := 0; i < benchcount; i++ {
@@ -158,10 +165,10 @@ func BenchmarkFastCache_Get(b *testing.B) {
 		var i = 0
 		for pb.Next() {
 			index := getIndex(i)
-			_, err := mc.Get(benchkeys[index])
-			if err != nil {
-				panic(err)
-			}
+			buffer := bufferPool.Get().(*bytes.Buffer)
+			buffer.Reset()
+			_ = mc.GetWithBuffer(benchkeys[index], buffer)
+			bufferPool.Put(buffer)
 			i++
 		}
 	})
@@ -184,7 +191,10 @@ func BenchmarkFastCache_SetAndGet(b *testing.B) {
 				value := benchVals[getValIndex(i)]
 				mc.Set(benchkeys[index], value)
 			} else {
-				mc.Get(benchkeys[index])
+				buffer := bufferPool.Get().(*bytes.Buffer)
+				buffer.Reset()
+				mc.GetWithBuffer(benchkeys[index], buffer)
+				bufferPool.Put(buffer)
 			}
 			i++
 		}
