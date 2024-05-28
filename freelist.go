@@ -1,7 +1,7 @@
 package fastcache
 
 import (
-	"math"
+	"math/bits"
 	"unsafe"
 )
 
@@ -72,9 +72,17 @@ func (f *freeStore) free(all *allocator, node *dataNode) {
 	fl.len++
 }
 
+//func sizeToIndex(size uint32) uint8 {
+//	v := math.Log2(float64(size))
+//	return uint8(math.Ceil(v))
+//}
+
 func sizeToIndex(size uint32) uint8 {
-	v := math.Log2(float64(size))
-	return uint8(math.Ceil(v))
+	if size == 0 {
+		return 0
+	}
+	index := uint8(bits.Len32(size - 1))
+	return index
 }
 
 type freeList struct {
