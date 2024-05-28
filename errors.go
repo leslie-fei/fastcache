@@ -8,4 +8,5 @@ var (
 	ErrNotFound           = errors.New("key not found")
 	ErrIndexOutOfRange    = errors.New("index out of range")
 	ErrFreeListIsEmpty    = errors.New("free list is empty")
+	ErrLRUListIsEmpty     = errors.New("lru list is empty")
 )

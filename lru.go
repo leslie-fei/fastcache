@@ -33,3 +33,11 @@ func (l *lruStore) remove(all *allocator, index uint8, node *listNode) {
 func (l *lruStore) get(index uint8) *list {
 	return &l.lruLists[index]
 }
+
+func (l *lruStore) len() uint64 {
+	length := uint64(0)
+	for _, lruList := range l.lruLists {
+		length += lruList.len
+	}
+	return length
+}

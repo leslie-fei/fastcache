@@ -206,24 +206,27 @@ func (s *shard) del(all *allocator, hash uint64, prev *dataNode, node *dataNode)
 func (s *shard) newElement(all *allocator, key string, value []byte) (node *dataNode, err error) {
 	fs := s.freeStore(all)
 	elSize := hashmapElementSize(key, value)
+
+	hm := s.hashmap(all)
+	if hm.len >= s.maxLen {
+		// 超过长度限制需要淘汰
+		if err = s.evict(all, elSize); err != nil {
+			// 有可能第一次在, 这个byte长度范围内进行分配, 就已经整体shard的长度超过了上限, 所以lru list有可能为空
+			// 直接去free list里面看下有没有可以用的free node
+			if !errors.Is(err, ErrLRUListIsEmpty) {
+				return
+			}
+			err = nil
+		}
+	}
+
 	node, err = fs.get(all, elSize)
 	if err != nil {
 		if !errors.Is(err, ErrNoSpace) {
 			return
 		}
 		// 空间不足, 就进行淘汰
-		hm := s.hashmap(all)
-		ls := s.lruStore(all)
-		index := sizeToIndex(elSize)
-		lruList := ls.get(index)
-		oldest := lruList.Back(all.base())
-		elPtr := uintptr(unsafe.Pointer(oldest)) - sizeOfHashmapBucketElement
-		el := (*hashmapBucketElement)(unsafe.Pointer(elPtr))
-		evictKey := el.key()
-		hash := xxHashString(evictKey)
-		evictPrev, evictNode := hm.find(all, hash, evictKey)
-		err = s.del(all, hash, evictPrev, evictNode)
-		if err != nil {
+		if err = s.evict(all, elSize); err != nil {
 			return
 		}
 		// 淘汰过后, 一定会有可用空间
@@ -239,4 +242,21 @@ func (s *shard) newElement(all *allocator, key string, value []byte) (node *data
 	el.updateKey(key)
 	el.updateValue(value)
 	return node, nil
+}
+
+func (s *shard) evict(all *allocator, elSize uint32) error {
+	hm := s.hashmap(all)
+	ls := s.lruStore(all)
+	index := sizeToIndex(elSize)
+	lruList := ls.get(index)
+	if lruList.len == 0 {
+		return ErrLRUListIsEmpty
+	}
+	oldest := lruList.Back(all.base())
+	elPtr := uintptr(unsafe.Pointer(oldest)) - sizeOfHashmapBucketElement
+	el := (*hashmapBucketElement)(unsafe.Pointer(elPtr))
+	evictKey := el.key()
+	hash := xxHashString(evictKey)
+	evictPrev, evictNode := hm.find(all, hash, evictKey)
+	return s.del(all, hash, evictPrev, evictNode)
 }

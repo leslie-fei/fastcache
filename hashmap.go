@@ -12,7 +12,7 @@ var (
 )
 
 type hashmap struct {
-	len           uint32
+	len           uint64
 	bucketLen     uint32
 	bucketsOffset uint64
 }
