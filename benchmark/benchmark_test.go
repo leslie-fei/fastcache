@@ -136,9 +136,8 @@ func BenchmarkFastCache_Set(b *testing.B) {
 			index := getIndex(i)
 			key := benchkeys[index]
 			value := benchVals[getValIndex(i)]
-			_, _, _, _ = index, value, mc, key
 			//mc.Get(key)
-			mc.Set(benchkeys[index], value)
+			mc.Set(key, value)
 			i++
 		}
 	})

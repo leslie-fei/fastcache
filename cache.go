@@ -4,6 +4,9 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
+	"sync/atomic"
+	"time"
 	"unsafe"
 
 	"github.com/leslie-fei/fastcache/gom"
@@ -16,12 +19,22 @@ const (
 )
 
 type Cache interface {
+	// Get value for the key, it returns ErrNotFound when key not exists
+	// and LRU move to front
 	Get(key string) ([]byte, error)
+	// GetWithBuffer write value into buffer, it returns ErrNotFound when key not exists
+	// and LRU move to front
 	GetWithBuffer(key string, buffer io.Writer) error
+	// Set key and value
 	Set(key string, value []byte) error
+	// Peek value for key, but it will not move LRU
 	Peek(key string) ([]byte, error)
+	// PeekWithBuffer write value into buffer, but it will not move LRU
 	PeekWithBuffer(key string, buffer io.Writer) error
+	// Delete value for key
 	Delete(key string) error
+	// Close the cache wait for the ongoing operations to complete, and return ErrCloseTimeout if timeout
+	Close() error
 }
 
 func NewCache(size int, c *Config) (Cache, error) {
@@ -103,42 +116,86 @@ func NewCache(size int, c *Config) (Cache, error) {
 type cache struct {
 	allocator *allocator
 	shards    *shards
+	closed    uint32
+	wg        sync.WaitGroup
+	inProcess int32
 }
 
 func (c *cache) Peek(key string) ([]byte, error) {
+	if atomic.LoadUint32(&c.closed) == 1 {
+		return nil, ErrCacheClosed
+	}
+	atomic.AddInt32(&c.inProcess, 1)
+	defer atomic.AddInt32(&c.inProcess, -1)
 	hash := xxHashString(key)
 	shr := c.shard(hash)
 	return shr.Peek(c.allocator, hash, key)
 }
 
 func (c *cache) PeekWithBuffer(key string, buffer io.Writer) error {
+	if atomic.LoadUint32(&c.closed) == 1 {
+		return ErrCacheClosed
+	}
+	atomic.AddInt32(&c.inProcess, 1)
+	defer atomic.AddInt32(&c.inProcess, -1)
 	hash := xxHashString(key)
 	shr := c.shard(hash)
 	return shr.PeekWithBuffer(c.allocator, hash, key, buffer)
 }
 
 func (c *cache) Delete(key string) error {
+	if atomic.LoadUint32(&c.closed) == 1 {
+		return ErrCacheClosed
+	}
+	atomic.AddInt32(&c.inProcess, 1)
+	defer atomic.AddInt32(&c.inProcess, -1)
 	hash := xxHashString(key)
 	shr := c.shard(hash)
 	return shr.Delete(c.allocator, hash, key)
 }
 
 func (c *cache) Set(key string, value []byte) error {
+	if atomic.LoadUint32(&c.closed) == 1 {
+		return ErrCacheClosed
+	}
+	atomic.AddInt32(&c.inProcess, 1)
+	defer atomic.AddInt32(&c.inProcess, -1)
 	hash := xxHashString(key)
 	shr := c.shard(hash)
 	return shr.Set(c.allocator, hash, key, value)
 }
 
 func (c *cache) Get(key string) ([]byte, error) {
+	if atomic.LoadUint32(&c.closed) == 1 {
+		return nil, ErrCacheClosed
+	}
+	atomic.AddInt32(&c.inProcess, 1)
+	defer atomic.AddInt32(&c.inProcess, -1)
 	hash := xxHashString(key)
 	shr := c.shard(hash)
 	return shr.Get(c.allocator, hash, key)
 }
 
 func (c *cache) GetWithBuffer(key string, buffer io.Writer) error {
+	if atomic.LoadUint32(&c.closed) == 1 {
+		return ErrCacheClosed
+	}
+	atomic.AddInt32(&c.inProcess, 1)
+	defer atomic.AddInt32(&c.inProcess, -1)
 	hash := xxHashString(key)
 	shr := c.shard(hash)
 	return shr.GetWithBuffer(c.allocator, hash, key, buffer)
+}
+
+func (c *cache) Close() error {
+	start := time.Now()
+	for atomic.LoadInt32(&c.inProcess) > 0 {
+		time.Sleep(time.Second)
+		if time.Since(start) > time.Second*5 {
+			return ErrCloseTimeout
+		}
+	}
+	return nil
 }
 
 func (c *cache) shard(hash uint64) *shard {
