@@ -188,12 +188,14 @@ func (c *cache) GetWithBuffer(key string, buffer io.Writer) error {
 }
 
 func (c *cache) Close() error {
-	start := time.Now()
+	atomic.AddUint32(&c.closed, 1)
+	retry := 5
 	for atomic.LoadInt32(&c.inProcess) > 0 {
-		time.Sleep(time.Second)
-		if time.Since(start) > time.Second*5 {
+		if retry <= 0 {
 			return ErrCloseTimeout
 		}
+		retry--
+		time.Sleep(time.Second)
 	}
 	return nil
 }
