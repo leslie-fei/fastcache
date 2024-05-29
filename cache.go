@@ -82,27 +82,9 @@ func NewCache(size int, c *Config) (Cache, error) {
 	}
 
 	if meta.Magic != magic {
-		meta.reset()
-		meta.Magic = magic
-		meta.Hash = confHash
-		meta.TotalSize = mem.Size()
-		meta.Used = uint64(sizeOfMetadata)
-
-		_, lockerOffset, err := all.alloc(uint64(sizeOfProcessLocker))
-		if err != nil {
+		if err = allocCache(all, mem, meta, config, confHash); err != nil {
 			return nil, err
 		}
-		meta.LockerOffset = lockerOffset
-
-		shardArrPtr, shardArrOffset, err := all.alloc(uint64(sizeOfShardArray))
-		if err != nil {
-			return nil, err
-		}
-		shrs := (*shards)(shardArrPtr)
-		if err = shrs.init(all, config.Shards, config.MaxElementLen); err != nil {
-			return nil, err
-		}
-		meta.ShardArrOffset = shardArrOffset
 	}
 
 	// 替换进程锁
@@ -111,6 +93,37 @@ func NewCache(size int, c *Config) (Cache, error) {
 
 	shrs := (*shards)(unsafe.Pointer(all.base() + uintptr(meta.ShardArrOffset)))
 	return &cache{allocator: all, shards: shrs}, nil
+}
+
+func allocCache(all *allocator, mem Memory, meta *metadata, config *Config, confHash uint64) (err error) {
+	defer func() {
+		// 如果初始化就有错误, 那么重置metadata
+		if err != nil {
+			meta.reset()
+		}
+	}()
+	meta.reset()
+	meta.Magic = magic
+	meta.Hash = confHash
+	meta.TotalSize = mem.Size()
+	meta.Used = uint64(sizeOfMetadata)
+
+	_, meta.LockerOffset, err = all.alloc(uint64(sizeOfProcessLocker))
+	if err != nil {
+		return err
+	}
+
+	var shardArrPtr unsafe.Pointer
+	shardArrPtr, meta.ShardArrOffset, err = all.alloc(uint64(sizeOfShardArray))
+	if err != nil {
+		return err
+	}
+
+	shrs := (*shards)(shardArrPtr)
+	if err = shrs.init(all, config.Shards, config.MaxElementLen); err != nil {
+		return err
+	}
+	return nil
 }
 
 type cache struct {
@@ -189,6 +202,7 @@ func (c *cache) GetWithBuffer(key string, buffer io.Writer) error {
 
 func (c *cache) Close() error {
 	if atomic.CompareAndSwapUint32(&c.closed, 0, 1) {
+		time.Sleep(time.Second)
 		retry := 5
 		for atomic.LoadInt32(&c.inProcess) > 0 {
 			if retry <= 0 {
