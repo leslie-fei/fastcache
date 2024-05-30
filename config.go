@@ -29,6 +29,7 @@ type Config struct {
 	ShardPerAllocSize uint64
 	// 分片数量
 	Shards uint32
+	Hasher HashFunc
 }
 
 func DefaultConfig() *Config {
@@ -63,6 +64,9 @@ func mergeConfig(size int, c *Config) *Config {
 		}
 		if c.MaxBigDataLen > 0 {
 			config.MaxBigDataLen = c.MaxBigDataLen
+		}
+		if c.Hasher != nil {
+			xxHashString = c.Hasher
 		}
 	}
 	return config
