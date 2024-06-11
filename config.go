@@ -29,7 +29,7 @@ type Config struct {
 	ShardPerAllocSize uint64
 	// 分片数量
 	Shards uint32
-	Hasher HashFunc
+	Hasher HashFunc `json:"-"`
 }
 
 func DefaultConfig() *Config {
