@@ -13,7 +13,7 @@ require (
 	github.com/cloudxaas/gohash v0.0.13 // indirect
 	github.com/edsrzf/mmap-go v1.1.0 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
-	golang.org/x/sys v0.20.0 // indirect
+	golang.org/x/sys v0.21.0 // indirect
 )
 
 replace github.com/leslie-fei/fastcache v0.0.0-20240528062932-5572fe77b618 => ../

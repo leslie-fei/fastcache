@@ -18,10 +18,11 @@ require (
 	github.com/gammazero/deque v0.2.1 // indirect
 	github.com/golang/glog v0.0.0-20160126235308-23def4e6c14b // indirect
 	github.com/klauspost/cpuid/v2 v2.2.6 // indirect
+	github.com/leslie-fei/memcore v0.0.0-20240611074219-2f13777e1d72 // indirect
 	github.com/ncw/directio v1.0.5 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/zeebo/xxh3 v1.0.2 // indirect
-	golang.org/x/sys v0.20.0 // indirect
+	golang.org/x/sys v0.21.0 // indirect
 )
 
 replace github.com/leslie-fei/fastcache v0.0.0-20240515083218-aa5c6353801b => ../

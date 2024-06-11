@@ -9,9 +9,9 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/leslie-fei/fastcache/gom"
-	"github.com/leslie-fei/fastcache/mmap"
-	"github.com/leslie-fei/fastcache/shm"
+	"github.com/leslie-fei/memcore/gom"
+	"github.com/leslie-fei/memcore/mmap"
+	"github.com/leslie-fei/memcore/shm"
 )
 
 const (
