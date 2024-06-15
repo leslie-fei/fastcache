@@ -9,8 +9,7 @@ import (
 
 func TestCache(t *testing.T) {
 	c, err := NewCache(64*MB, &Config{
-		MemoryType: MMAP,
-		MemoryKey:  "./cacheMMap.test",
+		MemoryType: GO,
 	})
 	if err != nil {
 		panic(err)
@@ -23,8 +22,9 @@ func TestCache(t *testing.T) {
 		i := i
 		go func() {
 			defer wg.Done()
-			key := fmt.Sprintf("key_%d", i)
-			err = c.Set(key, []byte(key))
+			key := []byte(fmt.Sprintf("key_%d", i))
+			value := key
+			err = c.Set(key, value)
 			if err != nil {
 				panic(err)
 			}
@@ -34,8 +34,8 @@ func TestCache(t *testing.T) {
 				panic(err)
 			}
 
-			if string(v) != key {
-				panic(fmt.Errorf("Get key: %s value: %s != %s", key, v, key))
+			if string(v) != string(key) {
+				panic(fmt.Errorf("get key: %s value: %s not equals", key, v))
 			}
 
 			err = c.Delete(key)

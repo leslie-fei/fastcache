@@ -2,7 +2,10 @@ module github.com/leslie-fei/fastcache
 
 go 1.21
 
-require github.com/leslie-fei/memcore v0.0.0-20240611074219-2f13777e1d72
+require (
+	github.com/cespare/xxhash/v2 v2.3.0
+	github.com/leslie-fei/memcore v0.0.0-20240611074219-2f13777e1d72
+)
 
 require (
 	github.com/edsrzf/mmap-go v1.1.0 // indirect

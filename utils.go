@@ -2,9 +2,6 @@ package fastcache
 
 import (
 	"math/big"
-	"runtime"
-	"strconv"
-	"strings"
 	"unsafe"
 )
 
@@ -30,17 +27,10 @@ func nextPrime(n int) int {
 	}
 }
 
-func getGoroutineID() uint64 {
-	buf := make([]byte, 64)
-	runtime.Stack(buf, false)
-	for _, f := range strings.Split(string(buf), "\n") {
-		if strings.Contains(f, "goroutine ") {
-			ids := strings.Split(f, " ")
-			if len(ids) > 1 {
-				id, _ := strconv.ParseUint(ids[1], 10, 64)
-				return id
-			}
-		}
-	}
-	return 0
+func b2s(b []byte) string {
+	return unsafe.String(unsafe.SliceData(b), len(b))
+}
+
+func s2b(s string) []byte {
+	return unsafe.Slice(unsafe.StringData(s), len(s))
 }

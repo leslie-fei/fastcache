@@ -103,7 +103,7 @@ func (s *shard) locker(all *allocator) Locker {
 	return (*processLocker)(unsafe.Pointer(all.base() + uintptr(s.lockerOffset)))
 }
 
-func (s *shard) Get(all *allocator, hash uint64, key string) ([]byte, error) {
+func (s *shard) Get(all *allocator, hash uint64, key []byte) ([]byte, error) {
 	locker := s.locker(all)
 	locker.Lock()
 	defer locker.Unlock()
@@ -123,7 +123,7 @@ func (s *shard) Get(all *allocator, hash uint64, key string) ([]byte, error) {
 	return value, nil
 }
 
-func (s *shard) GetWithBuffer(all *allocator, hash uint64, key string, buffer io.Writer) error {
+func (s *shard) GetWithBuffer(all *allocator, hash uint64, key []byte, buffer io.Writer) error {
 	locker := s.locker(all)
 	locker.Lock()
 	defer locker.Unlock()
@@ -144,7 +144,7 @@ func (s *shard) GetWithBuffer(all *allocator, hash uint64, key string, buffer io
 	return nil
 }
 
-func (s *shard) Peek(all *allocator, hash uint64, key string) ([]byte, error) {
+func (s *shard) Peek(all *allocator, hash uint64, key []byte) ([]byte, error) {
 	locker := s.locker(all)
 	locker.Lock()
 	defer locker.Unlock()
@@ -161,7 +161,7 @@ func (s *shard) Peek(all *allocator, hash uint64, key string) ([]byte, error) {
 	return value, nil
 }
 
-func (s *shard) PeekWithBuffer(all *allocator, hash uint64, key string, buffer io.Writer) error {
+func (s *shard) PeekWithBuffer(all *allocator, hash uint64, key []byte, buffer io.Writer) error {
 	locker := s.locker(all)
 	locker.Lock()
 	defer locker.Unlock()
@@ -176,7 +176,7 @@ func (s *shard) PeekWithBuffer(all *allocator, hash uint64, key string, buffer i
 	return el.valueWithBuffer(buffer)
 }
 
-func (s *shard) Set(all *allocator, hash uint64, key string, value []byte) error {
+func (s *shard) Set(all *allocator, hash uint64, key []byte, value []byte) error {
 	locker := s.locker(all)
 	locker.Lock()
 	defer locker.Unlock()
@@ -218,7 +218,7 @@ func (s *shard) Set(all *allocator, hash uint64, key string, value []byte) error
 	return nil
 }
 
-func (s *shard) Delete(all *allocator, hash uint64, key string) error {
+func (s *shard) Delete(all *allocator, hash uint64, key []byte) error {
 	locker := s.locker(all)
 	locker.Lock()
 	defer locker.Unlock()
@@ -240,7 +240,7 @@ func (s *shard) del(all *allocator, hash uint64, prev *dataNode, node *dataNode)
 	return nil
 }
 
-func (s *shard) newElement(all *allocator, hash uint64, key string, value []byte) (node *dataNode, err error) {
+func (s *shard) newElement(all *allocator, hash uint64, key []byte, value []byte) (node *dataNode, err error) {
 	fs := s.freeStore(all)
 	elSize := hashmapElementSize(key, value)
 
@@ -294,7 +294,7 @@ func (s *shard) evict(all *allocator, elSize uint32) error {
 	elPtr := uintptr(unsafe.Pointer(oldest)) - sizeOfHashmapBucketElement
 	el := (*hashmapBucketElement)(unsafe.Pointer(elPtr))
 	evictKey := el.key()
-	hash := xxHashString(evictKey)
+	hash := xxHashBytes(evictKey)
 	evictPrev, evictNode := hm.find(all, hash, evictKey)
 	return s.del(all, hash, evictPrev, evictNode)
 }

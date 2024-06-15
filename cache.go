@@ -21,20 +21,30 @@ const (
 type Cache interface {
 	// Get value for the key, it returns ErrNotFound when key not exists
 	// and LRU move to front
-	Get(key string) ([]byte, error)
+	Get(key []byte) ([]byte, error)
 	// GetWithBuffer write value into buffer, it returns ErrNotFound when key not exists
 	// and LRU move to front
-	GetWithBuffer(key string, buffer io.Writer) error
+	GetWithBuffer(key []byte, buffer io.Writer) error
 	// Set key and value
-	Set(key string, value []byte) error
+	Set(key []byte, value []byte) error
 	// Peek value for key, but it will not move LRU
-	Peek(key string) ([]byte, error)
+	Peek(key []byte) ([]byte, error)
 	// PeekWithBuffer write value into buffer, but it will not move LRU
-	PeekWithBuffer(key string, buffer io.Writer) error
+	PeekWithBuffer(key []byte, buffer io.Writer) error
 	// Delete value for key
-	Delete(key string) error
+	Delete(key []byte) error
 	// Close the cache wait for the ongoing operations to complete, and return ErrCloseTimeout if timeout
 	Close() error
+}
+
+type StringKeyCache interface {
+	Cache
+	GetStringKey(key string) ([]byte, error)
+	GetStringKeyWithBuffer(key string, buffer io.Writer) error
+	SetStringKey(key string, value []byte) error
+	PeekStringKey(key string) ([]byte, error)
+	PeekStringKeyWithBuffer(key string, buffer io.Writer) error
+	DeleteStringKey(key string) error
 }
 
 func NewCache(size int, c *Config) (Cache, error) {
@@ -134,70 +144,100 @@ type cache struct {
 	inProcess int32
 }
 
-func (c *cache) Peek(key string) ([]byte, error) {
+func (c *cache) Peek(key []byte) ([]byte, error) {
 	if atomic.LoadUint32(&c.closed) == 1 {
 		return nil, ErrCacheClosed
 	}
 	atomic.AddInt32(&c.inProcess, 1)
 	defer atomic.AddInt32(&c.inProcess, -1)
-	hash := xxHashString(key)
+	hash := xxHashBytes(key)
 	shr := c.shard(hash)
 	return shr.Peek(c.allocator, hash, key)
 }
 
-func (c *cache) PeekWithBuffer(key string, buffer io.Writer) error {
+func (c *cache) PeekWithBuffer(key []byte, buffer io.Writer) error {
 	if atomic.LoadUint32(&c.closed) == 1 {
 		return ErrCacheClosed
 	}
 	atomic.AddInt32(&c.inProcess, 1)
 	defer atomic.AddInt32(&c.inProcess, -1)
-	hash := xxHashString(key)
+	hash := xxHashBytes(key)
 	shr := c.shard(hash)
 	return shr.PeekWithBuffer(c.allocator, hash, key, buffer)
 }
 
-func (c *cache) Delete(key string) error {
+func (c *cache) Delete(key []byte) error {
 	if atomic.LoadUint32(&c.closed) == 1 {
 		return ErrCacheClosed
 	}
 	atomic.AddInt32(&c.inProcess, 1)
 	defer atomic.AddInt32(&c.inProcess, -1)
-	hash := xxHashString(key)
+	hash := xxHashBytes(key)
 	shr := c.shard(hash)
 	return shr.Delete(c.allocator, hash, key)
 }
 
-func (c *cache) Set(key string, value []byte) error {
+func (c *cache) Set(key []byte, value []byte) error {
 	if atomic.LoadUint32(&c.closed) == 1 {
 		return ErrCacheClosed
 	}
 	atomic.AddInt32(&c.inProcess, 1)
 	defer atomic.AddInt32(&c.inProcess, -1)
-	hash := xxHashString(key)
+	hash := xxHashBytes(key)
 	shr := c.shard(hash)
 	return shr.Set(c.allocator, hash, key, value)
 }
 
-func (c *cache) Get(key string) ([]byte, error) {
+func (c *cache) Get(key []byte) ([]byte, error) {
 	if atomic.LoadUint32(&c.closed) == 1 {
 		return nil, ErrCacheClosed
 	}
 	atomic.AddInt32(&c.inProcess, 1)
 	defer atomic.AddInt32(&c.inProcess, -1)
-	hash := xxHashString(key)
+	hash := xxHashBytes(key)
 	shr := c.shard(hash)
 	return shr.Get(c.allocator, hash, key)
 }
 
-func (c *cache) GetWithBuffer(key string, buffer io.Writer) error {
+func (c *cache) GetWithBuffer(key []byte, buffer io.Writer) error {
 	if atomic.LoadUint32(&c.closed) == 1 {
 		return ErrCacheClosed
 	}
 	atomic.AddInt32(&c.inProcess, 1)
 	defer atomic.AddInt32(&c.inProcess, -1)
-	hash := xxHashString(key)
+	hash := xxHashBytes(key)
 	shr := c.shard(hash)
 	return shr.GetWithBuffer(c.allocator, hash, key, buffer)
+}
+
+func (c *cache) GetStringKey(key string) ([]byte, error) {
+	k := s2b(key)
+	return c.Get(k)
+}
+
+func (c *cache) GetStringKeyWithBuffer(key string, buffer io.Writer) error {
+	k := s2b(key)
+	return c.GetWithBuffer(k, buffer)
+}
+
+func (c *cache) SetStringKey(key string, value []byte) error {
+	k := s2b(key)
+	return c.Set(k, value)
+}
+
+func (c *cache) PeekStringKey(key string) ([]byte, error) {
+	k := s2b(key)
+	return c.Peek(k)
+}
+
+func (c *cache) PeekStringKeyWithBuffer(key string, buffer io.Writer) error {
+	k := s2b(key)
+	return c.PeekWithBuffer(k, buffer)
+}
+
+func (c *cache) DeleteStringKey(key string) error {
+	k := s2b(key)
+	return c.Delete(k)
 }
 
 func (c *cache) Close() error {

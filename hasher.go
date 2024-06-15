@@ -1,3 +1,3 @@
 package fastcache
 
-type HashFunc func(s string) uint64
+type HashFunc func(s []byte) uint64

@@ -1,8 +1,8 @@
 package fastcache
 
 import (
+	"encoding/binary"
 	"encoding/json"
-	"fmt"
 	"runtime"
 )
 
@@ -66,7 +66,7 @@ func mergeConfig(size int, c *Config) *Config {
 			config.MaxBigDataLen = c.MaxBigDataLen
 		}
 		if c.Hasher != nil {
-			xxHashString = c.Hasher
+			xxHashBytes = c.Hasher
 		}
 	}
 	return config
@@ -77,6 +77,7 @@ func getConfigHash(size int, config *Config) (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
-	sourceStr := fmt.Sprintf("%d_%x", size, js)
-	return xxHashString(sourceStr), nil
+	js = append(js)
+	js = binary.LittleEndian.AppendUint32(js, uint32(size))
+	return xxHashBytes(js), nil
 }

@@ -115,7 +115,7 @@ func BenchmarkTemporary(b *testing.B) {
 	})
 }
 
-func newFastCache() fastcache.Cache {
+func newFastCache() fastcache.StringKeyCache {
 	cache, err := fastcache.NewCache(fastcache.GB, &fastcache.Config{
 		Shards:        sharding,
 		MaxElementLen: 2 * benchcount,
@@ -123,7 +123,7 @@ func newFastCache() fastcache.Cache {
 	if err != nil {
 		panic(err)
 	}
-	return cache
+	return cache.(fastcache.StringKeyCache)
 }
 
 func BenchmarkFastCache_Set(b *testing.B) {
@@ -137,7 +137,7 @@ func BenchmarkFastCache_Set(b *testing.B) {
 			key := benchkeys[index]
 			value := benchVals[getValIndex(i)]
 			//mc.Get(key)
-			mc.Set(key, value)
+			mc.SetStringKey(key, value)
 			i++
 		}
 	})
@@ -155,7 +155,7 @@ func BenchmarkFastCache_Get(b *testing.B) {
 		value := benchVals[getValIndex(i)]
 		index := getIndex(i)
 		key := benchkeys[index]
-		mc.Set(key, value)
+		mc.SetStringKey(key, value)
 	}
 
 	b.ResetTimer()
@@ -166,7 +166,7 @@ func BenchmarkFastCache_Get(b *testing.B) {
 			index := getIndex(i)
 			buffer := bufferPool.Get().(*bytes.Buffer)
 			buffer.Reset()
-			_ = mc.GetWithBuffer(benchkeys[index], buffer)
+			_ = mc.GetStringKeyWithBuffer(benchkeys[index], buffer)
 			bufferPool.Put(buffer)
 			i++
 		}
@@ -177,7 +177,7 @@ func BenchmarkFastCache_SetAndGet(b *testing.B) {
 	var mc = newFastCache()
 	for i := 0; i < benchcount; i++ {
 		value := benchVals[getValIndex(i)]
-		mc.Set(benchkeys[i%benchcount], value)
+		mc.SetStringKey(benchkeys[i%benchcount], value)
 	}
 
 	b.ResetTimer()
@@ -188,11 +188,11 @@ func BenchmarkFastCache_SetAndGet(b *testing.B) {
 			index := getIndex(i)
 			if index&7 == 0 {
 				value := benchVals[getValIndex(i)]
-				mc.Set(benchkeys[index], value)
+				mc.SetStringKey(benchkeys[index], value)
 			} else {
 				buffer := bufferPool.Get().(*bytes.Buffer)
 				buffer.Reset()
-				mc.GetWithBuffer(benchkeys[index], buffer)
+				mc.GetStringKeyWithBuffer(benchkeys[index], buffer)
 				bufferPool.Put(buffer)
 			}
 			i++

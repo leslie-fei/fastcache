@@ -35,7 +35,7 @@ func (m *hashmap) init(all *allocator, bucketLen uint32) error {
 	return nil
 }
 
-func (m *hashmap) find(all *allocator, hash uint64, key string) (prev *dataNode, node *dataNode) {
+func (m *hashmap) find(all *allocator, hash uint64, key []byte) (prev *dataNode, node *dataNode) {
 	bucket := m.byHash(all, hash)
 	return bucket.find(all, hash, key)
 }
@@ -101,7 +101,7 @@ func (l *hashmapBucket) reset() {
 	*l = hashmapBucket{}
 }
 
-func (l *hashmapBucket) find(all *allocator, hash uint64, key string) (prev *dataNode, node *dataNode) {
+func (l *hashmapBucket) find(all *allocator, hash uint64, key []byte) (prev *dataNode, node *dataNode) {
 	if l.len == 0 {
 		return nil, nil
 	}
@@ -131,17 +131,17 @@ func (el *hashmapBucketElement) reset() {
 	*el = hashmapBucketElement{}
 }
 
-func (el *hashmapBucketElement) equal(key string) bool {
+func (el *hashmapBucketElement) equal(key []byte) bool {
 	if el.keyLen != uint32(len(key)) {
 		return false
 	}
 	keyPtr := el.keyPtr()
-	kh := (*reflect.StringHeader)(unsafe.Pointer(&key))
+	kh := (*reflect.SliceHeader)(unsafe.Pointer(&key))
 	return memequal(keyPtr, unsafe.Pointer(kh.Data), uintptr(len(key)))
 }
 
-func (el *hashmapBucketElement) updateKey(key string) {
-	ss := (*reflect.StringHeader)(unsafe.Pointer(&key))
+func (el *hashmapBucketElement) updateKey(key []byte) {
+	ss := (*reflect.SliceHeader)(unsafe.Pointer(&key))
 	keyPtr := el.keyPtr()
 	memmove(keyPtr, unsafe.Pointer(ss.Data), uintptr(ss.Len))
 	el.keyLen = uint32(len(key))
@@ -154,11 +154,12 @@ func (el *hashmapBucketElement) updateValue(value []byte) {
 	el.valLen = uint32(len(value))
 }
 
-func (el *hashmapBucketElement) key() string {
-	var s string
-	sh := (*reflect.StringHeader)(unsafe.Pointer(&s))
+func (el *hashmapBucketElement) key() []byte {
+	var s []byte
+	sh := (*reflect.SliceHeader)(unsafe.Pointer(&s))
 	sh.Data = uintptr(el.keyPtr())
 	sh.Len = int(el.keyLen)
+	sh.Cap = sh.Len
 	return s
 }
 
@@ -199,6 +200,6 @@ func (el *hashmapBucketElement) valueWithBuffer(buffer io.Writer) error {
 	return err
 }
 
-func hashmapElementSize(key string, value []byte) uint32 {
+func hashmapElementSize(key []byte, value []byte) uint32 {
 	return uint32(sizeOfHashmapBucketElement) + uint32(sizeOfLRUNode) + uint32(len(key)) + uint32(len(value))
 }
