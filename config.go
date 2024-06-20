@@ -25,10 +25,11 @@ type Config struct {
 	MaxBigDataLen uint64
 	// 定义多少字节为大数据块
 	BigDataSize uint32
-	// 分片每次申请内存大小
+	// 当每个分片中的空闲内存不足时会去总内存申请, 分片每次申请内存大小
 	ShardPerAllocSize uint64
 	// 分片数量
 	Shards uint32
+	// hash算法
 	Hasher HashFunc `json:"-"`
 }
 

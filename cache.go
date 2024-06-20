@@ -19,6 +19,14 @@ const (
 )
 
 type Cache interface {
+	// Has check if the key exists in the cache.
+	Has(key []byte) bool
+	// HasWithCounter check if the key exists in the cache and return with counter
+	HasWithCounter(key []byte) (uint8, bool)
+	// GetWithCounter get key in the cache and return with counter
+	GetWithCounter(key []byte) ([]byte, uint8, error)
+	// GetBufferWithCounter get key with buffer and return with counter
+	GetBufferWithCounter(key []byte, buffer io.Writer) (uint8, error)
 	// Get value for the key, it returns ErrNotFound when key not exists
 	// and LRU move to front
 	Get(key []byte) ([]byte, error)
@@ -144,6 +152,51 @@ type cache struct {
 	inProcess int32
 }
 
+func (c *cache) Has(key []byte) bool {
+	if atomic.LoadUint32(&c.closed) == 1 {
+		return false
+	}
+	atomic.AddInt32(&c.inProcess, 1)
+	defer atomic.AddInt32(&c.inProcess, -1)
+	hash := xxHashBytes(key)
+	shr := c.shard(hash)
+	_, ok := shr.Has(c.allocator, hash, key)
+	return ok
+}
+
+func (c *cache) HasWithCounter(key []byte) (uint8, bool) {
+	if atomic.LoadUint32(&c.closed) == 1 {
+		return 0, false
+	}
+	atomic.AddInt32(&c.inProcess, 1)
+	defer atomic.AddInt32(&c.inProcess, -1)
+	hash := xxHashBytes(key)
+	shr := c.shard(hash)
+	return shr.Has(c.allocator, hash, key)
+}
+
+func (c *cache) GetWithCounter(key []byte) ([]byte, uint8, error) {
+	if atomic.LoadUint32(&c.closed) == 1 {
+		return nil, 0, ErrCacheClosed
+	}
+	atomic.AddInt32(&c.inProcess, 1)
+	defer atomic.AddInt32(&c.inProcess, -1)
+	hash := xxHashBytes(key)
+	shr := c.shard(hash)
+	return shr.Get(c.allocator, hash, key)
+}
+
+func (c *cache) GetBufferWithCounter(key []byte, buffer io.Writer) (uint8, error) {
+	if atomic.LoadUint32(&c.closed) == 1 {
+		return 0, ErrCacheClosed
+	}
+	atomic.AddInt32(&c.inProcess, 1)
+	defer atomic.AddInt32(&c.inProcess, -1)
+	hash := xxHashBytes(key)
+	shr := c.shard(hash)
+	return shr.GetWithBuffer(c.allocator, hash, key, buffer)
+}
+
 func (c *cache) Peek(key []byte) ([]byte, error) {
 	if atomic.LoadUint32(&c.closed) == 1 {
 		return nil, ErrCacheClosed
@@ -196,7 +249,8 @@ func (c *cache) Get(key []byte) ([]byte, error) {
 	defer atomic.AddInt32(&c.inProcess, -1)
 	hash := xxHashBytes(key)
 	shr := c.shard(hash)
-	return shr.Get(c.allocator, hash, key)
+	v, _, err := shr.Get(c.allocator, hash, key)
+	return v, err
 }
 
 func (c *cache) GetWithBuffer(key []byte, buffer io.Writer) error {
@@ -207,7 +261,8 @@ func (c *cache) GetWithBuffer(key []byte, buffer io.Writer) error {
 	defer atomic.AddInt32(&c.inProcess, -1)
 	hash := xxHashBytes(key)
 	shr := c.shard(hash)
-	return shr.GetWithBuffer(c.allocator, hash, key, buffer)
+	_, err := shr.GetWithBuffer(c.allocator, hash, key, buffer)
+	return err
 }
 
 func (c *cache) GetStringKey(key string) ([]byte, error) {

@@ -103,7 +103,7 @@ func (s *shard) locker(all *allocator) Locker {
 	return (*processLocker)(unsafe.Pointer(all.base() + uintptr(s.lockerOffset)))
 }
 
-func (s *shard) Get(all *allocator, hash uint64, key []byte) ([]byte, error) {
+func (s *shard) Has(all *allocator, hash uint64, key []byte) (uint8, bool) {
 	locker := s.locker(all)
 	locker.Lock()
 	defer locker.Unlock()
@@ -111,8 +111,22 @@ func (s *shard) Get(all *allocator, hash uint64, key []byte) ([]byte, error) {
 	hm := s.hashmap(all)
 	_, node := hm.find(all, hash, key)
 	if node == nil {
-		return nil, ErrNotFound
+		return 0, false
 	}
+	return node.count, true
+}
+
+func (s *shard) Get(all *allocator, hash uint64, key []byte) ([]byte, uint8, error) {
+	locker := s.locker(all)
+	locker.Lock()
+	defer locker.Unlock()
+
+	hm := s.hashmap(all)
+	_, node := hm.find(all, hash, key)
+	if node == nil {
+		return nil, 0, ErrNotFound
+	}
+	node.count++
 
 	el := nodeTo[hashmapBucketElement](node)
 	value := el.value()
@@ -120,10 +134,10 @@ func (s *shard) Get(all *allocator, hash uint64, key []byte) ([]byte, error) {
 	ls := s.lruStore(all)
 	ls.moveToFront(all, node.freeIndex, el.lruNode())
 
-	return value, nil
+	return value, node.count, nil
 }
 
-func (s *shard) GetWithBuffer(all *allocator, hash uint64, key []byte, buffer io.Writer) error {
+func (s *shard) GetWithBuffer(all *allocator, hash uint64, key []byte, buffer io.Writer) (uint8, error) {
 	locker := s.locker(all)
 	locker.Lock()
 	defer locker.Unlock()
@@ -131,17 +145,18 @@ func (s *shard) GetWithBuffer(all *allocator, hash uint64, key []byte, buffer io
 	hm := s.hashmap(all)
 	_, node := hm.find(all, hash, key)
 	if node == nil {
-		return ErrNotFound
+		return 0, ErrNotFound
 	}
+	node.count++
 
 	el := nodeTo[hashmapBucketElement](node)
 	if err := el.valueWithBuffer(buffer); err != nil {
-		return err
+		return 0, err
 	}
 
 	ls := s.lruStore(all)
 	ls.moveToFront(all, node.freeIndex, el.lruNode())
-	return nil
+	return node.count, nil
 }
 
 func (s *shard) Peek(all *allocator, hash uint64, key []byte) ([]byte, error) {
@@ -154,6 +169,7 @@ func (s *shard) Peek(all *allocator, hash uint64, key []byte) ([]byte, error) {
 	if node == nil {
 		return nil, ErrNotFound
 	}
+	node.count++
 
 	el := nodeTo[hashmapBucketElement](node)
 	value := el.value()
@@ -171,6 +187,7 @@ func (s *shard) PeekWithBuffer(all *allocator, hash uint64, key []byte, buffer i
 	if node == nil {
 		return ErrNotFound
 	}
+	node.count++
 
 	el := nodeTo[hashmapBucketElement](node)
 	return el.valueWithBuffer(buffer)

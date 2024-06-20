@@ -29,6 +29,11 @@ func TestCache(t *testing.T) {
 				panic(err)
 			}
 
+			exists := c.Has(key)
+			if !exists {
+				panic("key must exists")
+			}
+
 			v, err := c.Get(key)
 			if err != nil {
 				panic(err)

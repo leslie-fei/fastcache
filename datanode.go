@@ -7,6 +7,7 @@ var sizeOfDataNode = unsafe.Sizeof(dataNode{})
 type dataNode struct {
 	next      uint64
 	freeIndex uint8
+	count     uint8
 }
 
 func (d *dataNode) reset() {
